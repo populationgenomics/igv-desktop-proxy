@@ -34,6 +34,17 @@ This project uses [`uv`](https://docs.astral.sh/uv/) for fast Python dependency 
 
     The server will start at `http://localhost:8080`.
 
+### Pulumi Setup
+
+The pulumi scripts related to the GCP infrastructure is the `infrastructure` directory.
+For the `dev` and `prod` environments. Set the following env variables to work.
+
+```bash
+export PULUMI_CONFIG_APP_DOMAIN="<app-domain-here>"
+export PULUMI_CONFIG_GCP_PROJECT="<gcp-project-here>"
+export PULUMI_CONFIG_GCP_REGION="australia-southeast1"
+```
+
 ## Testing the IGV Desktop Python Proxy Locally
 
 Follow the steps below to test the IGV desktop Python proxy locally.
