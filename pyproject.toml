@@ -1,3 +1,23 @@
+[project]
+name = "igv-desktop-proxy"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "httpx>=0.25.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.0",
+    "pulumi>=3.192.0",
+    "pulumi-docker>=4.8.2",
+    "pulumi-gcp>=8.41.1",
+    "ruff>=0.12.11",
+]
+
 [tool.ruff]
 line-length = 120
 
@@ -5,13 +25,89 @@ line-length = 120
 quote-style = "single"
 
 [tool.ruff.lint]
-# ignore pydocstyle, flake8-boolean-trap (FBT)
-select = ["A", "B", "C",  "E", "F", "G", "I", "N", "Q", "S", "W", "ANN", "ARG", "BLE", "COM", "DJ", "DTZ", "ERA", "EXE", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PYI", "RET", "RSE", "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"]
+select = [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "I",
+    "N",
+    "Q",
+    "S",
+    "W",
+    "ANN",
+    "ARG",
+    "BLE",
+    "COM",
+    "DJ",
+    "DTZ",
+    "ERA",
+    "EXE",
+    "ICN",
+    "ISC",
+    "NPY",
+    "PD",
+    "PGH",
+    "PIE",
+    "PL",
+    "PT",
+    "PYI",
+    "RET",
+    "RSE",
+    "RUF",
+    "SIM",
+    "SLF",
+    "TID",
+    "UP",
+    "YTT",
+]
 
-fixable = ["A", "B", "C", "D", "E", "F", "G", "I", "N", "Q", "S", "T", "W", "ANN", "ARG", "BLE", "COM", "DJ", "DTZ", "ERA", "EXE", "FBT", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PYI", "RET", "RSE", "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"]
+fixable = [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "I",
+    "N",
+    "Q",
+    "S",
+    "T",
+    "W",
+    "ANN",
+    "ARG",
+    "BLE",
+    "COM",
+    "DJ",
+    "DTZ",
+    "ERA",
+    "EXE",
+    "FBT",
+    "ICN",
+    "ISC",
+    "NPY",
+    "PD",
+    "PGH",
+    "PIE",
+    "PL",
+    "PT",
+    "PYI",
+    "RET",
+    "RSE",
+    "RUF",
+    "SIM",
+    "SLF",
+    "TID",
+    "UP",
+    "YTT",
+]
 
 ignore = [
-    "ANN101",  # Missing type annotation for self in method
     "ANN201",  # Missing return type annotation for public function
     "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed in `**kwargs`
     "G004",    # Logging statement uses f-string
@@ -19,10 +115,21 @@ ignore = [
     "PT018",   # Assertion should be broken down into multiple parts
     "Q000",    # Single quotes found but double quotes preferred
     "S101",    # Use of assert detected
+    "B008",    # Do not perform function calls in argument defaults - this disallows standard fastapi dependency injection
+    "D100",    # Don't require module docstrings
+    "D104",    # Don't require package doctrings
 ]
 
 [tool.ruff.lint.isort]
-section-order = ["future", "standard-library", "third-party", "hail", "cpg", "first-party", "local-folder"]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "hail",
+    "cpg",
+    "first-party",
+    "local-folder",
+]
 
 [tool.ruff.lint.isort.sections]
 hail = ["hail", "hailtop"]
