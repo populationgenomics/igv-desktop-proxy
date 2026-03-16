@@ -1,17 +1,21 @@
 import logging
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
+import redis.asyncio as redis
 import uvicorn
 from fastapi import Depends, FastAPI, Request, Response
-from fastapi.responses import StreamingResponse
 
-# Application constants
-DEFAULT_PORT = 8080
-GCS_BASE_URL = 'storage-download.googleapis.com'
-REQUEST_URL_PARTS = 2
-CLIENT_TIMEOUT = 5  # httpx default timeout 5 secs
+from server.connection_handler import create_redis_pool, get_httpx_client, get_redis_client
+from server.constants import (
+    CLIENT_TIMEOUT,
+    CRAM_INDEX_FILE_EXTENSION,
+    FASTAPI_DEFAULT_CONFIGS,
+    GCS_BASE_URL,
+    REQUEST_URL_PARTS,
+)
+from server.gcs_service import GCSStreamer
+from server.rate_limit_service import DownloadRateLimiter
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -24,18 +28,12 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Define application lifespan.
-
-    https://fastapi.tiangolo.com/advanced/events/#startup-and-shutdown-together.
-    """
-    app.state.httpx_client = httpx.AsyncClient(timeout=CLIENT_TIMEOUT)
+    """Define application lifespan."""
+    _app.state.httpx_client = httpx.AsyncClient(timeout=CLIENT_TIMEOUT)
+    _app.state.redis_client = redis.Redis.from_pool(create_redis_pool())  # TODO default pool configurations
     yield
-    await app.state.httpx_client.aclose()
-
-
-def get_httpx_client(request: Request) -> httpx.AsyncClient:
-    """Retrieve the shared httpx.AsyncClient instance."""
-    return request.app.state.httpx_client
+    await _app.state.httpx_client.aclose()
+    await _app.state.redis_client.aclose()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -48,57 +46,62 @@ async def health_check(_request: Request):
 
 
 @app.api_route('/{full_path:path}', methods=['GET'])
-async def proxy_handler(request: Request, full_path: str, client: httpx.AsyncClient = Depends(get_httpx_client)):
+async def proxy_handler(
+    request: Request,
+    full_path: str,
+    httpx_client: httpx.AsyncClient = Depends(get_httpx_client),
+    redis_client: redis.Redis = Depends(get_redis_client),
+):
     """Proxy requests to GCS."""
+    print(f'Request: {request.url}, {request.headers}')
     path_segments = full_path.split('/', 1)
     if len(path_segments) < REQUEST_URL_PARTS:
         return Response(content='Invalid path format. Use /bucket/path', status_code=400)
+
+    auth_header = None
+    range_header = None
+
+    headers = {}
+    if 'authorization' in request.headers:
+        auth_header = request.headers['authorization']
+        headers['Authorization'] = auth_header
+    if 'range' in request.headers:
+        range_header = request.headers['range']
+        headers['Range'] = range_header
+
+    if auth_header is None:
+        return Response(status_code=400, content='Bad request')
 
     bucket = path_segments[0]
     object_path = path_segments[1]
     target_url = httpx.URL(scheme='https', host=f'{bucket}.{GCS_BASE_URL}', path=f'/{object_path}')
 
-    headers = {}
-    if 'authorization' in request.headers:
-        headers['Authorization'] = request.headers['authorization']
-    if 'range' in request.headers:
-        headers['Range'] = request.headers['range']
+    is_index_file = object_path.endswith(CRAM_INDEX_FILE_EXTENSION)
 
-    try:
-        req = client.build_request(
-            method=request.method,
-            url=target_url,
-            headers=headers,
-            params=request.query_params,
+    if not is_index_file:
+        if range_header is None:
+            return Response(status_code=400, content='Bad request')
+
+        # TODO for every zoom in we get two requests - one for the 'bytes=0-511999' and other for the actual range
+        # TODO save consumption per bucket
+        rate_limiter = DownloadRateLimiter(
+            redis_client=redis_client,
+            http_client=httpx_client,
+            user_token=auth_header,
+            request_range=range_header,
         )
 
-        gcs_response = await client.send(req, stream=True)
-        gcs_response.raise_for_status()
+        is_allowed = await rate_limiter.check_user_limit()
+        if not is_allowed:
+            return Response(status_code=429, content='Rate limit exceeded')
 
-        # https://fastapi.tiangolo.com/advanced/custom-response/#streamingresponse
-        async def stream_wrapper() -> AsyncIterator[bytes]:
-            try:
-                async for chunk in gcs_response.aiter_raw():
-                    yield chunk
-            finally:
-                await gcs_response.aclose()
-
-        return StreamingResponse(
-            stream_wrapper(),
-            status_code=gcs_response.status_code,
-            headers=dict(gcs_response.headers),
-        )
-
-    except httpx.RequestError as exc:
-        logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
-        return Response(status_code=500, content='Internal Server Error')
-    except httpx.HTTPStatusError as exc:
-        logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
-        await exc.response.aread()
-        return Response(status_code=exc.response.status_code, content=exc.response.text)
-    except Exception as e:  # noqa: BLE001
-        logging.error(f'Unexpected error: {e}')
-        return Response(status_code=500, content='Internal Server Error')
+    streamer = GCSStreamer(httpx_client=httpx_client)
+    return await streamer.stream_from_gcs(
+        method=request.method,
+        target_url=target_url,
+        headers=headers,
+        query_params=request.query_params,
+    )
 
 
 if __name__ == '__main__':
@@ -106,6 +109,6 @@ if __name__ == '__main__':
 
     uvicorn.run(
         'server.main:app',
-        host='localhost',
-        port=DEFAULT_PORT,
+        host=FASTAPI_DEFAULT_CONFIGS.get('host'),
+        port=FASTAPI_DEFAULT_CONFIGS.get('port'),
     )

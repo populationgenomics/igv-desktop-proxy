@@ -49,6 +49,32 @@ service_account = gcp.serviceaccount.Account(
     display_name=f'IGV Desktop Proxy ({stack})',
 )
 
+# creating vpc for redis connection
+network = gcp.compute.Network(
+    'igv-desktop-proxy-network',
+    name=f'igv-proxy-network-{stack}',
+    auto_create_subnetworks=False,
+)
+
+subnetwork = gcp.compute.Subnetwork(
+    'igv-desktop-proxy-subnetwork',
+    name=f'igv-proxy-subnetwork-{stack}',
+    ip_cidr_range='10.0.0.0/24',
+    region=gcp_config.require('region'),
+    network=network.id,
+)
+
+redis_instance = gcp.redis.Instance(
+    'igv-desktop-proxy-redis',
+    name=f'igv-proxy-redis-{stack}',
+    memory_size_gb=1,
+    tier='BASIC',
+    redis_version='REDIS_7_2',
+    region=gcp_config.require('region'),
+    authorized_network=network.id,
+    # TODO enable auth
+)
+
 cloud_run = gcp.cloudrunv2.Service(
     'igv-desktop-proxy',
     name=f'igv-desktop-proxy-{stack}',
@@ -62,6 +88,15 @@ cloud_run = gcp.cloudrunv2.Service(
             min_instance_count=0,
             max_instance_count=10,
         ),
+        vpc_access=gcp.cloudrunv2.ServiceTemplateVpcAccessArgs(
+            network_interfaces=[
+                gcp.cloudrunv2.ServiceTemplateVpcAccessNetworkInterfaceArgs(
+                    network=network.id,
+                    subnetwork=subnetwork.id,
+                ),
+            ],
+            egress='PRIVATE_RANGES_ONLY',
+        ),
         containers=[
             gcp.cloudrunv2.ServiceTemplateContainerArgs(
                 image=image.repo_digest,
@@ -72,7 +107,16 @@ cloud_run = gcp.cloudrunv2.Service(
                     },
                     startup_cpu_boost=True,  # Allocate extra CPU during startup to improve cold start times
                 ),
-                envs=[],
+                envs=[
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+                        name='REDIS_HOST',
+                        value=redis_instance.host,
+                    ),
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+                        name='REDIS_PORT',
+                        value=redis_instance.port.apply(lambda p: str(p)),
+                    ),
+                ],
                 ports=gcp.cloudrunv2.ServiceTemplateContainerPortsArgs(
                     name='http1',
                     container_port=8080,
