@@ -5,6 +5,7 @@ import redis.asyncio as redis
 from fastapi import Request
 
 from server.constants import REDIS_DEFAULT_CONFIGS
+from server.rate_limit_service import RateLimitRedisClient
 
 
 def get_httpx_client(request: Request) -> httpx.AsyncClient:
@@ -14,10 +15,10 @@ def get_httpx_client(request: Request) -> httpx.AsyncClient:
     return request.app.state.httpx_client
 
 
-async def get_redis_client(request: Request) -> redis.Redis:
-    """Retrieve a redis_client from the shared redis pool."""
+async def get_redis_client(request: Request) -> RateLimitRedisClient:
+    """Retrieve the shared RateLimitRedisClient instance."""
     if request.app.state.redis_client is None:
-        raise RuntimeError('Redis redis_client not initialized.')
+        raise RuntimeError('Redis client not initialized.')
     return request.app.state.redis_client
 
 
