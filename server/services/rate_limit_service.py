@@ -35,12 +35,12 @@ class DownloadRateLimiter:
     async def check_user_limit(self) -> bool:
         """Validate user and check their download limits."""
         token_hash = hashlib.sha256(self.user_token.encode('utf-8')).hexdigest()
-        self.user_sub = await self._get_authenticated_user_id(token_hash)
+        self.user_sub = await self.get_authenticated_user_id(token_hash)
 
         if self.user_sub is None:
             return False
 
-        return await self._evaluate_download_limits()
+        return await self.evaluate_download_limits()
 
     async def refund(self) -> None:
         """Return the reserved bytes to the download budget after a failed GCS request."""
@@ -56,7 +56,7 @@ class DownloadRateLimiter:
             logging.error(f'Failed to refund rate-limit quota for user {self.user_sub}: {exc}')
 
     @retry(retry=retry_if_result(is_none), wait=wait_exponential_jitter(initial=1, max=60))  # TODO test retry
-    async def _get_authenticated_user_id(self, token_hash: str) -> str | None:
+    async def get_authenticated_user_id(self, token_hash: str) -> str | None:
         """Check cache or external service to validate the user access token."""
         # Already cached.
         token_key = f'token_hash:{token_hash}'
@@ -69,7 +69,7 @@ class DownloadRateLimiter:
         # Try to acquire the lock
         # Only one request is allowed to invoke userinfo endpoint if there are concurrent requests with the same token
         request_uuid = uuid.uuid4()
-        acquired = await self.redis_client.set(lock_key, request_uuid, nx=True, ex=10)
+        acquired = await self.redis_client.set(lock_key, request_uuid.bytes, nx=True, ex=10)
 
         if acquired:
             try:
@@ -90,14 +90,14 @@ class DownloadRateLimiter:
 
         return None
 
-    async def _evaluate_download_limits(self) -> bool:
+    async def evaluate_download_limits(self) -> bool:
         """Deduct the request size from the user's download budget."""
         now = time.time()
 
         # user_sub is always set before this method is called.
         assert self.user_sub is not None
         sub_key = f'sub:{self.user_sub}'
-        result = await self.redis_client.deduct(sub_key, self.request_bytes, now)
+        result = await self.redis_client.deduct_if_balance(sub_key, self.request_bytes, now)
 
         if result < 0:
             return False  # cap exceeded or single request > cap

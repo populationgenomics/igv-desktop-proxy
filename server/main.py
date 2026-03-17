@@ -77,7 +77,6 @@ async def proxy_handler(
 
     bucket = path_segments[0]
     object_path = path_segments[1]
-    target_url = httpx.URL(scheme='https', host=f'{bucket}.{GCS_BASE_URL}', path=f'/{object_path}')
 
     is_index_file = object_path.endswith(CRAM_INDEX_FILE_EXTENSION)
     rate_limiter = None
@@ -106,6 +105,7 @@ async def proxy_handler(
                 )
 
     streamer = GCSStreamer(httpx_client=httpx_client)
+    target_url = httpx.URL(scheme='https', host=f'{bucket}.{GCS_BASE_URL}', path=f'/{object_path}')
     gcs_response = await streamer.stream_from_gcs(
         method=request.method,
         target_url=target_url,

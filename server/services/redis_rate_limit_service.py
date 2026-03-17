@@ -94,8 +94,8 @@ class RateLimitRedisClient:
         self._refund_on_fail = client.register_script(_REFUND_SCRIPT)
         self._release_lock = client.register_script(_RELEASE_LOCK_SCRIPT)
 
-    async def deduct(self, user_sub: str, request_bytes: int, now: float) -> int:
-        """Deduct request_range bytes from user_sub's budget."""
+    async def deduct_if_balance(self, user_sub: str, request_bytes: int, now: float) -> int:
+        """Deduct request_range bytes from users download budget if sufficienet quota is available."""
         return await self._check_available_limit(
             keys=[user_sub],
             args=[request_bytes, DOWNLOAD_CAP_BYTES, CAPPED_TIME_WINDOW, now],
@@ -110,7 +110,7 @@ class RateLimitRedisClient:
 
     async def release_lock(self, token_hash: str, uuid: UUID) -> int:
         """Release lock set on token_hash."""
-        return await self._refund_on_fail(
+        return await self._release_lock(
             keys=[token_hash],
             args=[uuid.bytes],
         )
