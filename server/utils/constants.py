@@ -1,13 +1,15 @@
 # Application constants
+
 GCS_BASE_URL = 'storage-download.googleapis.com'
+CPG_HOSTED_DOMAIN = 'populationgenomics.org.au'
+
 REQUEST_URL_PARTS = 2
 AUTH_HEADER_PARTS = 2
-CLIENT_TIMEOUT = 5  # httpx default timeout 5 secs
-
-HOSTED_DOMAIN = 'populationgenomics.org.au'
+HTTPX_CLIENT_TIMEOUT = 5  # httpx default timeout 5 secs
 
 # rate limiting caps
-DOWNLOAD_CAP_FOR_TIME_WINDOW = 1073741824  # bytes (1GB download cap enforced)
+DOWNLOAD_CAP_BYTES = 1073741824  # bytes (1GB download cap enforced)
+CAPPED_TIME_WINDOW = 3600
 FIRST_BYTE_RANGE = 'bytes=0-511999'
 
 # rate limit retry

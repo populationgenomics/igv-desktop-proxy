@@ -1,10 +1,9 @@
-import logging
 from typing import Any
+from uuid import UUID
 
 import redis.asyncio as redis
-from redis.exceptions import NoScriptError
 
-from server.constants import DOWNLOAD_CAP_FOR_TIME_WINDOW
+from server.utils.constants import CAPPED_TIME_WINDOW, DOWNLOAD_CAP_BYTES
 
 # adapted from - https://github.com/alisaifee/limits,
 # https://redis.io/tutorials/howtos/ratelimiting/#1-fixed-window-counter
@@ -25,13 +24,13 @@ local cap         = tonumber(ARGV[2])
 local window      = tonumber(ARGV[3])
 local now         = tonumber(ARGV[4])
 
-local remaining   = tonumber(redis.call('HGET', key, 'remaining_size'))
+local remaining   = tonumber(redis.call('HGET', key, 'remaining_bytes'))
 local expire_time = tonumber(redis.call('HGET', key, 'expire_time'))
 
 if remaining ~= nil and expire_time ~= nil and (expire_time - now) > 0 then
     if (remaining - amount) >= 0 then
         local new_remaining = remaining - amount
-        redis.call('HSET', key, 'remaining_size', new_remaining)
+        redis.call('HSET', key, 'remaining_bytes', new_remaining)
         return new_remaining
     else
         return -1
@@ -44,7 +43,7 @@ if amount > cap then
 end
 local new_remaining = cap - amount
 local new_expire    = now + window
-redis.call('HSET', key, 'remaining_size', new_remaining, 'expire_time', new_expire)
+redis.call('HSET', key, 'remaining_bytes', new_remaining, 'expire_time', new_expire)
 redis.call('EXPIREAT', key, math.ceil(new_expire))
 return new_remaining
 """
@@ -62,59 +61,59 @@ local now         = tonumber(ARGV[2])
 local expire_time = tonumber(redis.call('HGET', key, 'expire_time'))
 
 if expire_time ~= nil and (expire_time - now) > 0 then
-    redis.call('HINCRBY', key, 'remaining_size', amount)
+    redis.call('HINCRBY', key, 'remaining_bytes', amount)
 end
 return 1
+"""
+
+# Release the lock safely
+# Refer - https://redis.io/docs/latest/commands/set/ for this lock pattern
+# Keys:   KEYS[1] = hashed token (user token hash)
+# Args:   ARGV[1] = uuid         (request uuid)
+
+_RELEASE_LOCK_SCRIPT = """
+local key         = KEYS[1]
+local uuid        = ARGV[1]
+
+if redis.call('GET',key) == uuid
+then
+    return redis.call("del",key)
+else
+    return 0
+end
 """
 
 
 class RateLimitRedisClient:
     """Redis client wrapper with Lua scripts."""
 
-    def __init__(self, client: redis.Redis, deduct_sha: str, refund_sha: str) -> None:
+    def __init__(self, client: redis.Redis) -> None:
         """Initialize the client."""
         self._client = client
-        self._deduct_sha = deduct_sha
-        self._refund_sha = refund_sha
-
-    @classmethod
-    async def create(cls, client: redis.Redis) -> 'RateLimitRedisClient':
-        """Register Lua scripts."""
-        deduct_sha = (await client.script_load(_DEDUCT_SCRIPT)).decode()
-        refund_sha = (await client.script_load(_REFUND_SCRIPT)).decode()
-        return cls(client, deduct_sha, refund_sha)
+        self._check_available_limit = client.register_script(_DEDUCT_SCRIPT)
+        self._refund_on_fail = client.register_script(_REFUND_SCRIPT)
+        self._release_lock = client.register_script(_RELEASE_LOCK_SCRIPT)
 
     async def deduct(self, user_sub: str, request_bytes: int, now: float) -> int:
         """Deduct request_range bytes from user_sub's budget."""
-        return await self._evalsha_with_fallback(
-            self._deduct_sha,
-            _DEDUCT_SCRIPT,
-            1,
-            user_sub,
-            request_bytes,
-            DOWNLOAD_CAP_FOR_TIME_WINDOW,
-            DOWNLOAD_CAP_FOR_TIME_WINDOW,
-            now,
+        return await self._check_available_limit(
+            keys=[user_sub],
+            args=[request_bytes, DOWNLOAD_CAP_BYTES, CAPPED_TIME_WINDOW, now],
         )
 
     async def refund(self, user_sub: str, amount: int, now: float) -> int:
-        """Atomically refund amount bytes to user_sub's budget (if window still active)."""
-        return await self._evalsha_with_fallback(
-            self._refund_sha,
-            _REFUND_SCRIPT,
-            1,
-            user_sub,
-            amount,
-            now,
+        """Refund amount bytes to user_sub's budget (if window still active)."""
+        return await self._refund_on_fail(
+            keys=[user_sub],
+            args=[amount, now],
         )
 
-    async def _evalsha_with_fallback(self, sha: str, script: str, num_keys: int, *args: Any) -> Any:
-        """Call EVALSHA; fall back to EVAL if Redis no longer has the script cached."""
-        try:
-            return await self._client.evalsha(sha, num_keys, *args)
-        except NoScriptError:
-            logging.warning(f'Script SHA {sha} not found in Redis; re-registering via EVAL.')
-            return await self._client.eval(script, num_keys, *args)
+    async def release_lock(self, token_hash: str, uuid: UUID) -> int:
+        """Release lock set on token_hash."""
+        return await self._refund_on_fail(
+            keys=[token_hash],
+            args=[uuid.bytes],
+        )
 
     def __getattr__(self, name: str) -> Any:
         """Proxy all other redis.Redis methods (get, set, delete, aclose, …) transparently."""

@@ -1,3 +1,5 @@
+from typing import Any
+
 from starlette.datastructures import Headers
 
 
@@ -19,3 +21,8 @@ def get_headers(headers: Headers) -> dict[str, str]:
         _headers['Range'] = headers['range']
 
     return _headers
+
+
+def is_none(value: Any) -> bool:
+    """Return True if value is None."""
+    return value is None

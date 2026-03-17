@@ -1,12 +1,14 @@
-import asyncio
 import hashlib
 import logging
 import time
+import uuid
 
 import httpx
+from tenacity import retry, retry_if_result, wait_exponential_jitter
 
-from server.constants import HOSTED_DOMAIN, LOCK_POLL_ATTEMPTS, LOCK_POLL_SLEEP_S
-from server.redis_client import RateLimitRedisClient
+from server.services.redis_rate_limit_service import RateLimitRedisClient
+from server.utils.constants import CPG_HOSTED_DOMAIN
+from server.utils.util import is_none
 
 
 class DownloadRateLimiter:
@@ -28,7 +30,7 @@ class DownloadRateLimiter:
 
         self.user_sub: str | None = None
 
-        self.remaining_size: int | None = None  # set after a successful deduction
+        self.remaining_bytes: int | None = None
 
     async def check_user_limit(self) -> bool:
         """Validate user and check their download limits."""
@@ -42,27 +44,32 @@ class DownloadRateLimiter:
 
     async def refund(self) -> None:
         """Return the reserved bytes to the download budget after a failed GCS request."""
-        if self.user_sub is None or self.remaining_size is None:
+        if self.user_sub is None or self.remaining_bytes is None:
             return
 
         now = time.time()
         try:
             assert self.user_sub is not None
-            await self.redis_client.refund(self.user_sub, self.request_bytes, now)
+            key = f'sub:{self.user_sub}'
+            await self.redis_client.refund(key, self.request_bytes, now)
         except Exception as exc:  # noqa: BLE001
             logging.error(f'Failed to refund rate-limit quota for user {self.user_sub}: {exc}')
 
+    @retry(retry=retry_if_result(is_none), wait=wait_exponential_jitter(initial=1, max=60))  # TODO test retry
     async def _get_authenticated_user_id(self, token_hash: str) -> str | None:
         """Check cache or external service to validate the user access token."""
         # Already cached.
-        user_sub = await self.redis_client.get(token_hash)
+        token_key = f'token_hash:{token_hash}'
+        user_sub = await self.redis_client.get(token_key)
         if user_sub is not None:
             return user_sub
 
-        lock_key = f'lock:token:{token_hash}'
+        lock_key = f'lock:{token_hash}'
 
-        # Try to acquire the lock.
-        acquired = await self.redis_client.set(lock_key, '1', nx=True, ex=15)
+        # Try to acquire the lock
+        # Only one request is allowed to invoke userinfo endpoint if there are concurrent requests with the same token
+        request_uuid = uuid.uuid4()
+        acquired = await self.redis_client.set(lock_key, request_uuid, nx=True, ex=10)
 
         if acquired:
             try:
@@ -71,24 +78,15 @@ class DownloadRateLimiter:
                     user_sub = user_info.get('sub')
                     hd = user_info.get('hd')  # validate domain membership
 
-                    if user_sub and hd == HOSTED_DOMAIN:
+                    if user_sub and hd == CPG_HOSTED_DOMAIN:
                         await self.redis_client.set(
-                            token_hash,
+                            token_key,
                             user_sub,
                             ex=3600,
                         )  # expire this key after 1-hour. Mirror expiry time of the access token
                         return user_sub
             finally:
-                await self.redis_client.delete(lock_key)
-
-            return None
-
-        # TODO back off and retry
-        for _ in range(LOCK_POLL_ATTEMPTS):
-            await asyncio.sleep(LOCK_POLL_SLEEP_S)
-            user_sub = await self.redis_client.get(token_hash)
-            if user_sub is not None:
-                return user_sub
+                await self.redis_client.release_lock(lock_key, request_uuid)
 
         return None
 
@@ -98,12 +96,13 @@ class DownloadRateLimiter:
 
         # user_sub is always set before this method is called.
         assert self.user_sub is not None
-        result = await self.redis_client.deduct(self.user_sub, self.request_bytes, now)
+        sub_key = f'sub:{self.user_sub}'
+        result = await self.redis_client.deduct(sub_key, self.request_bytes, now)
 
         if result < 0:
             return False  # cap exceeded or single request > cap
 
-        self.remaining_size = int(result)
+        self.remaining_bytes = int(result)
         return True
 
     async def fetch_user_info(self) -> dict | None:

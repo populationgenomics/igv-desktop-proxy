@@ -50,13 +50,19 @@ class GCSStreamer:
 
         except httpx.RequestError as exc:
             logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
-            return Response(status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value, content='Internal Server Error')
+            return Response(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
+                content=HTTPStatus.INTERNAL_SERVER_ERROR.description,
+            )
 
         except httpx.HTTPStatusError as exc:
-            logging.error(f'HTTP error {exc.response.status_code} while requesting {exc.request.url!r}.')
             await exc.response.aread()
+            logging.error(f'HTTP error {exc.response.status_code} while requesting {exc.request.url!r}.')
             return Response(status_code=exc.response.status_code, content=exc.response.text)
 
         except Exception as e:  # noqa: BLE001
             logging.error(f'Unexpected error: {e}')
-            return Response(status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value, content='Internal Server Error')
+            return Response(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
+                content=HTTPStatus.INTERNAL_SERVER_ERROR.description,
+            )
