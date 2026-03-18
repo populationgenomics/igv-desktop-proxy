@@ -49,7 +49,7 @@ app = FastAPI(lifespan=lifespan)
 @app.api_route('/health', methods=['GET'])
 async def health_check(_request: Request):
     """Return health check response."""
-    return Response(status_code=HTTPStatus.OK, content='Ok. Server is healthy.')
+    return Response(status_code=HTTPStatus.OK, content='OK. Server is healthy.')
 
 
 @app.api_route('/{full_path:path}', methods=['GET'])

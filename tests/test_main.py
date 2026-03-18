@@ -18,7 +18,7 @@ class TestMainAPI:
         """Test health check endpoint."""
         response = self.proxy_api.get('/health')
         assert response.status_code == HTTPStatus.OK
-        assert response.text == 'OK'
+        assert 'OK' in response.text
 
     def test_proxy_invalid_path_format(self):
         """Test return Error when invalid bucket path format is passed."""

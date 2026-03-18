@@ -90,7 +90,6 @@ class DownloadRateLimiter:
                             user_sub,
                             ex=3600,
                         )  # expire this key after 1-hour. Mirror expiry time of the access token
-                        await self.redis_client.set()
                         return user_sub
             finally:
                 await self.redis_client.release_lock(lock_key, request_uuid)
