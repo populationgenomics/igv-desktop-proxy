@@ -40,7 +40,7 @@ async def lifespan(_app: FastAPI):
     )
     yield
     await _app.state.httpx_client.aclose()
-    await _app.state.redis_client.aclose()  # TODO what happens to the lua scripts on connection close
+    await _app.state.redis_client.aclose()
 
 
 app = FastAPI(lifespan=lifespan)

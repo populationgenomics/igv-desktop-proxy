@@ -115,6 +115,15 @@ class RateLimitRedisClient:
             args=[uuid.bytes],
         )
 
+    async def aclose(self) -> None:
+        """Close the Redis connection and removes local script references."""
+        try:
+            await self._client.aclose()
+        finally:
+            self._check_available_limit = None
+            self._refund_on_fail = None
+            self._release_lock = None
+
     def __getattr__(self, name: str) -> Any:
         """Proxy all other redis.Redis methods (get, set, delete, aclose, …) transparently."""
         return getattr(self._client, name)
