@@ -9,7 +9,7 @@ HTTPX_CLIENT_TIMEOUT = 5  # httpx default timeout 5 secs
 
 # rate limiting caps
 DOWNLOAD_CAP_BYTES = 1073741824  # bytes (1GB download cap enforced)
-CAPPED_TIME_WINDOW = 3600
+CAPPED_TIME_WINDOW_SECS = 3600  # 1-hour
 FIRST_BYTE_RANGE = 'bytes=0-511999'
 
 # rate limit retry

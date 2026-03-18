@@ -116,3 +116,8 @@ class TestDownloadRateLimiter:
             assert self.redis_client.get.call_count == 2  # noqa: PLR2004
             # called 1 time (on the first attempt to acquire lock, second returns early from cache)
             assert self.redis_client.set.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_authenticated_user_id_retry_on_fetch_user_info_fails(self):
+        """Test get_authenticated_user_id retry on fetch user info fails."""
+        # TODO add test case

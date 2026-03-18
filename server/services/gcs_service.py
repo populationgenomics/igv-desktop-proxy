@@ -52,7 +52,7 @@ class GCSStreamer:
             logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
             return Response(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
-                content=HTTPStatus.INTERNAL_SERVER_ERROR.description,
+                content=HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
             )
 
         except httpx.HTTPStatusError as exc:
@@ -64,5 +64,5 @@ class GCSStreamer:
             logging.error(f'Unexpected error: {e}')
             return Response(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
-                content=HTTPStatus.INTERNAL_SERVER_ERROR.description,
+                content=HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
             )

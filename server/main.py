@@ -49,7 +49,7 @@ app = FastAPI(lifespan=lifespan)
 @app.api_route('/health', methods=['GET'])
 async def health_check(_request: Request):
     """Return health check response."""
-    return Response(status_code=200, content='OK')
+    return Response(status_code=HTTPStatus.OK, content='Ok. Server is healthy.')
 
 
 @app.api_route('/{full_path:path}', methods=['GET'])
@@ -69,11 +69,11 @@ async def proxy_handler(
     range_header = headers.get('Range')
 
     if auth_header is None:
-        return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.description)
+        return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.phrase)
 
     user_token = auth_header.split(' ')
     if len(user_token) != AUTH_HEADER_PARTS:
-        return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.description)
+        return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.phrase)
 
     bucket = path_segments[0]
     object_path = path_segments[1]
@@ -83,7 +83,7 @@ async def proxy_handler(
 
     if not is_index_file:
         if range_header is None:
-            return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.description)
+            return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.phrase)
 
         # For every zoom in we get two requests - one for the 'bytes=0-511999' and other for the actual range
         if range_header != FIRST_BYTE_RANGE:
@@ -101,7 +101,7 @@ async def proxy_handler(
             if not is_allowed:
                 return Response(
                     status_code=HTTPStatus.TOO_MANY_REQUESTS.value,
-                    content=HTTPStatus.TOO_MANY_REQUESTS.description,
+                    content=HTTPStatus.TOO_MANY_REQUESTS.phrase,
                 )
 
     streamer = GCSStreamer(httpx_client=httpx_client)
