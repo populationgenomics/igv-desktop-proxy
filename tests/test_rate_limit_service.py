@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
 from server.services.rate_limit_service import DownloadRateLimiter
 from server.utils.constants import CPG_HOSTED_DOMAIN
@@ -34,9 +35,11 @@ class TestDownloadRateLimiter:
     @pytest.mark.asyncio
     async def test_check_user_limit_unauthenticated(self):
         """Test check_user_limit returns False on failed user identification."""
-        with patch.object(self.rate_limiter, 'get_authenticated_user_id', return_value=None):
-            result = await self.rate_limiter.check_user_limit()
-            assert result is False
+        with (
+            patch.object(self.rate_limiter, 'get_authenticated_user_id', return_value=None),
+            pytest.raises(HTTPException),
+        ):
+            await self.rate_limiter.check_user_limit()
 
     @pytest.mark.asyncio
     async def test_fetch_user_info_success(self):
@@ -72,7 +75,6 @@ class TestDownloadRateLimiter:
         self.redis_client.deduct_if_balance.return_value = remaining_bytes
         result = await self.rate_limiter.evaluate_download_limits()
         assert result is True
-        assert self.rate_limiter.remaining_bytes == remaining_bytes
 
     @pytest.mark.asyncio
     async def test_evaluate_download_limits_exceeded(self):

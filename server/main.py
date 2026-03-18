@@ -5,7 +5,7 @@ from http import HTTPStatus
 import httpx
 import redis.asyncio as redis
 import uvicorn
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 
 from server.services.connection_handler import create_redis_pool, get_httpx_client, get_redis_client
 from server.services.gcs_service import GCSStreamer
@@ -97,12 +97,15 @@ async def proxy_handler(
                 request_bytes=request_bytes,
             )
 
-            is_allowed = await rate_limiter.check_user_limit()
-            if not is_allowed:
-                return Response(
-                    status_code=HTTPStatus.TOO_MANY_REQUESTS.value,
-                    content=HTTPStatus.TOO_MANY_REQUESTS.phrase,
-                )
+            try:
+                is_allowed = await rate_limiter.check_user_limit()
+                if not is_allowed:
+                    return Response(
+                        status_code=HTTPStatus.TOO_MANY_REQUESTS.value,
+                        content=HTTPStatus.TOO_MANY_REQUESTS.phrase,
+                    )
+            except HTTPException as e:
+                return Response(status_code=e.status_code, content=e.detail)
 
     streamer = GCSStreamer(httpx_client=httpx_client)
     target_url = httpx.URL(scheme='https', host=f'{bucket}.{GCS_BASE_URL}', path=f'/{object_path}')

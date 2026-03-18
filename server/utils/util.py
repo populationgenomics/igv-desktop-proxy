@@ -26,3 +26,10 @@ def get_headers(headers: Headers) -> dict[str, str]:
 def is_none(value: Any) -> bool:
     """Return True if value is None."""
     return value is None
+
+
+def get_redis_key(prefix: str, key: str) -> str | None:
+    """Return the redis key combining with a prefix."""
+    if is_none(key) or is_none(prefix):
+        return None
+    return f'{prefix}:{key}'

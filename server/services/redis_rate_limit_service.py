@@ -20,7 +20,10 @@ class RateLimitRedisClient:
         self._release_lock = client.register_script(RELEASE_LOCK_LUA_SCRIPT)
 
     async def deduct_if_balance(self, user_sub: str, request_bytes: int, now: float) -> int:
-        """Deduct request_range bytes from users download budget if sufficient quota is available."""
+        """Deduct request_range bytes from users download budget if sufficient quota is available.
+
+        Returns -> the remaining bytes if sufficient quota is available, -1 otherwise.
+        """
         if request_bytes > DOWNLOAD_CAP_BYTES:
             return -1
 

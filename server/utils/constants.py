@@ -17,6 +17,9 @@ LOCK_POLL_ATTEMPTS = 10
 LOCK_POLL_SLEEP_S = 0.1
 
 CRAM_INDEX_FILE_EXTENSION = '.crai'
+SUB_PREFIX = 'sub'
+LOCK_PREFIX = 'lock'
+TOKEN_HASH_PREFIX = 'token_hash'  # noqa: S105
 
 REDIS_DEFAULT_CONFIGS = {
     'host': 'localhost',

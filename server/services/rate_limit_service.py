@@ -2,18 +2,20 @@ import hashlib
 import logging
 import time
 import uuid
+from http import HTTPStatus
 
 import httpx
 import tenacity
+from fastapi import HTTPException
 from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential_jitter
 
 from server.services.redis_rate_limit_service import RateLimitRedisClient
-from server.utils.constants import CPG_HOSTED_DOMAIN
-from server.utils.util import is_none
+from server.utils.constants import CPG_HOSTED_DOMAIN, LOCK_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
+from server.utils.util import get_redis_key, is_none
 
 
 class DownloadRateLimiter:
-    """Handles rate limiting logic with concurrency-safe Redis operations."""
+    """Implements IGV desktop proxy rate limiting logic based on a fixed window."""
 
     def __init__(
         self,
@@ -22,7 +24,7 @@ class DownloadRateLimiter:
         user_token: str,
         request_bytes: int,
     ) -> None:
-        """Initialize clients."""
+        """Initialize rate limiter clients and request specifics."""
         self.redis_client = redis_client
         self.http_client = http_client
 
@@ -30,8 +32,6 @@ class DownloadRateLimiter:
         self.request_bytes = request_bytes  # bytes; IGV typically requests 512 KB per request
 
         self.user_sub: str | None = None
-
-        self.remaining_bytes: int | None = None
 
     async def check_user_limit(self) -> bool:
         """Validate user and check their download limits."""
@@ -44,19 +44,19 @@ class DownloadRateLimiter:
             self.user_sub = None
 
         if self.user_sub is None:
-            return False  # TODO raise an exception here
+            raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail=HTTPStatus.UNAUTHORIZED.phrase)
 
         return await self.evaluate_download_limits()
 
     async def refund(self) -> None:
         """Return the reserved bytes to the download budget after a failed GCS request."""
-        if self.user_sub is None or self.remaining_bytes is None:
+        if self.user_sub is None:
             return
 
         now = time.time()
         try:
             assert self.user_sub is not None
-            key = f'sub:{self.user_sub}'
+            key = get_redis_key(SUB_PREFIX, self.user_sub)
             await self.redis_client.refund(key, self.request_bytes, now)
         except Exception as exc:  # noqa: BLE001
             logging.error(f'Failed to refund rate-limit quota for user {self.user_sub}: {exc}')
@@ -65,12 +65,12 @@ class DownloadRateLimiter:
     async def get_authenticated_user_id(self, token_hash: str) -> str | None:
         """Check cache or external service to validate the user access token."""
         # Already cached.
-        token_key = f'token_hash:{token_hash}'
+        token_key = get_redis_key(TOKEN_HASH_PREFIX, token_hash)
         user_sub = await self.redis_client.get(token_key)
         if user_sub is not None:
             return user_sub
 
-        lock_key = f'lock:{token_hash}'
+        lock_key = get_redis_key(LOCK_PREFIX, token_hash)
 
         # Try to acquire the lock
         # Only one request is allowed to invoke userinfo endpoint if there are concurrent requests with the same token
@@ -78,6 +78,10 @@ class DownloadRateLimiter:
         acquired = await self.redis_client.set(lock_key, request_uuid.bytes, nx=True, ex=10)
 
         if acquired:
+            # recheck after lock acquisition
+            user_sub = await self.redis_client.get(token_key)
+            if user_sub is not None:
+                return user_sub
             try:
                 user_info = await self.fetch_user_info()
                 if user_info:
@@ -89,8 +93,10 @@ class DownloadRateLimiter:
                             token_key,
                             user_sub,
                             ex=3600,
+                            nx=True,
                         )  # expire this key after 1-hour. Mirror expiry time of the access token
                         return user_sub
+                    raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail=HTTPStatus.UNAUTHORIZED.phrase)
             finally:
                 await self.redis_client.release_lock(lock_key, request_uuid)
 
@@ -101,14 +107,10 @@ class DownloadRateLimiter:
         now = time.time()
 
         assert self.user_sub is not None
-        sub_key = f'sub:{self.user_sub}'
-        result = await self.redis_client.deduct_if_balance(sub_key, self.request_bytes, now)
+        sub_key = get_redis_key(SUB_PREFIX, self.user_sub)
+        remaining_bytes = await self.redis_client.deduct_if_balance(sub_key, self.request_bytes, now)
 
-        if result < 0:
-            return False  # cap exceeded or single request > cap
-
-        self.remaining_bytes = int(result)
-        return True
+        return remaining_bytes >= 0
 
     async def fetch_user_info(self) -> dict | None:
         """Fetch user info from Google's userinfo endpoint."""
