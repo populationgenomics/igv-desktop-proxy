@@ -4,7 +4,7 @@ from starlette.datastructures import Headers
 
 
 def get_byte_range(range_header: str) -> int:
-    """Return the total bytes of the given byte range."""
+    """Return the total bytes in the given byte range."""
     range_parts = range_header.replace('bytes=', '').split('-')
     start_byte = int(range_parts[0])
     end_byte = int(range_parts[1])

@@ -133,3 +133,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# add files used for local development/testing and not committed to version control
+.local

@@ -56,7 +56,7 @@ class TestMainAPI:
         assert response.status_code == HTTPStatus.OK
         assert response.content == b'fake data'
 
-    @patch('server.main.apply_rate_limit_if_applicable')
+    @patch('server.main.rate_limit_if_applicable')
     @patch('server.main.GCSStreamer')
     def test_proxy_success_with_range_limit(self, mock_gcs_streamer_cls: MagicMock, mock_rate_limiter_cls: MagicMock):
         """Test return success when requesting data from non-index file."""

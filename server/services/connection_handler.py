@@ -32,4 +32,4 @@ def create_redis_pool() -> redis.ConnectionPool:
     redis_port = int(os.environ.get('REDIS_PORT', REDIS_DEFAULT_CONFIGS.get('port')))
 
     url = f'redis://{redis_host}:{redis_port}/0'  # default db
-    return redis.ConnectionPool.from_url(url=url, max_connections=20)  # TODO ensure connections are closed
+    return redis.ConnectionPool.from_url(url=url, max_connections=100, decode_responses=True)

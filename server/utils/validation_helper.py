@@ -19,7 +19,6 @@ def validate_and_parse_path(full_path: str) -> tuple[str, str]:
             detail='Invalid path format. Use /bucket/path',
         )
 
-    path_segments = full_path.split('/', 1)
     return path_segments[0], path_segments[1]
 
 
@@ -38,7 +37,7 @@ def validate_auth(headers: dict) -> str:
     return user_token[1].strip()
 
 
-async def apply_rate_limit_if_applicable(
+async def rate_limit_if_applicable(
     object_path: str,
     range_header: str | None,
     user_token: str,

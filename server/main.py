@@ -16,7 +16,7 @@ from server.utils.constants import (
     HTTPX_CLIENT_TIMEOUT,
 )
 from server.utils.generic_helper import get_headers
-from server.utils.validation_helper import apply_rate_limit_if_applicable, validate_and_parse_path, validate_auth
+from server.utils.validation_helper import rate_limit_if_applicable, validate_and_parse_path, validate_auth
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -62,7 +62,7 @@ async def proxy_handler(
     user_token = validate_auth(headers)
     range_header = headers.get('Range')
 
-    rate_limiter = await apply_rate_limit_if_applicable(
+    rate_limiter = await rate_limit_if_applicable(
         object_path=object_path,
         range_header=range_header,
         user_token=user_token,
@@ -70,13 +70,13 @@ async def proxy_handler(
         redis_client=redis_client,
     )
 
-    streamer = GCSStreamer(httpx_client=httpx_client)
     target_url = httpx.URL(
         scheme='https',
         host=f'{bucket}.{GCS_BASE_URL}',
         path=f'/{object_path}',
     )
 
+    streamer = GCSStreamer(httpx_client=httpx_client)
     gcs_response = await streamer.stream_from_gcs(
         method=request.method,
         target_url=target_url,

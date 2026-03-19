@@ -61,6 +61,7 @@ class DownloadRateLimiter:
         except Exception as exc:  # noqa: BLE001
             logging.error(f'Failed to refund rate-limit quota for user {self.user_sub}: {exc}')
 
+    # TODO we can introduce lru cache here to minimise token - user sub calls to redis
     @retry(retry=retry_if_result(is_none), wait=wait_exponential_jitter(initial=1, max=16), stop=stop_after_attempt(5))
     async def get_authenticated_user_id(self, token_hash: str) -> str | None:
         """Check cache or external service to validate the user access token."""
