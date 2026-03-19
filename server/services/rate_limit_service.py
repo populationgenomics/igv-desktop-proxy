@@ -44,7 +44,7 @@ class DownloadRateLimiter:
             self.user_sub = None
 
         if self.user_sub is None:
-            raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail=HTTPStatus.UNAUTHORIZED.phrase)
+            raise HTTPException(HTTPStatus.UNAUTHORIZED)
 
         return await self.evaluate_download_limits()
 
