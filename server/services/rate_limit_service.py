@@ -96,7 +96,7 @@ class DownloadRateLimiter:
                             nx=True,
                         )  # expire this key after 1-hour. Mirror expiry time of the access token
                         return user_sub
-                    raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail=HTTPStatus.UNAUTHORIZED.phrase)
+                    raise HTTPException(HTTPStatus.UNAUTHORIZED)
             finally:
                 await self.redis_client.release_lock(lock_key, request_uuid)
 

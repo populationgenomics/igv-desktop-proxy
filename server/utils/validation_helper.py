@@ -28,12 +28,12 @@ def validate_auth(headers: dict) -> str:
     auth_header = headers.get('Authorization')
 
     if auth_header is None:
-        raise HTTPException(HTTPStatus.BAD_REQUEST)
+        raise HTTPException(HTTPStatus.UNAUTHORIZED)
 
     user_token = auth_header.split(' ')
 
     if len(user_token) != AUTH_HEADER_PARTS:
-        raise HTTPException(HTTPStatus.BAD_REQUEST)
+        raise HTTPException(HTTPStatus.UNAUTHORIZED)
 
     return user_token[1].strip()
 

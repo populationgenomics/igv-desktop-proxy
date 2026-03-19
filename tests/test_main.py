@@ -29,13 +29,13 @@ class TestMainAPI:
     def test_proxy_missing_auth_header(self):
         """Test return Error when authorization header is missing."""
         response = self.proxy_api.get('/mybucket/path/to/file.cram', headers={'Range': 'bytes=0-100'})
-        assert response.status_code == HTTPStatus.BAD_REQUEST
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
 
     def test_proxy_invalid_auth_header(self):
         """Test return Error when authorization header format is invalid."""
         headers = {'Authorization': 'InvalidToken', 'Range': 'bytes=0-100'}
         response = self.proxy_api.get('/mybucket/path/to/file.cram', headers=headers)
-        assert response.status_code == HTTPStatus.BAD_REQUEST
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
 
     def test_proxy_missing_range_header_for_non_index_files(self):
         """Test return Error when range header is missing when requesting data from non index files."""
