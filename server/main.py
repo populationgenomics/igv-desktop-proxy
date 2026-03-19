@@ -5,22 +5,18 @@ from http import HTTPStatus
 import httpx
 import redis.asyncio as redis
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 
 from server.services.connection_handler import create_redis_pool, get_httpx_client, get_redis_client
 from server.services.gcs_service import GCSStreamer
-from server.services.rate_limit_service import DownloadRateLimiter
 from server.services.redis_rate_limit_service import RateLimitRedisClient
 from server.utils.constants import (
-    AUTH_HEADER_PARTS,
-    CRAM_INDEX_FILE_EXTENSION,
     FASTAPI_DEFAULT_CONFIGS,
-    FIRST_BYTE_RANGE,
     GCS_BASE_URL,
     HTTPX_CLIENT_TIMEOUT,
-    REQUEST_URL_PARTS,
 )
-from server.utils.util import get_byte_range, get_headers
+from server.utils.generic_helper import get_headers
+from server.utils.validation_helper import apply_rate_limit_if_applicable, validate_and_parse_path, validate_auth
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -60,55 +56,27 @@ async def proxy_handler(
     redis_client: RateLimitRedisClient = Depends(get_redis_client),
 ):
     """Proxy requests to GCS."""
-    path_segments = full_path.split('/', 1)
-    if len(path_segments) < REQUEST_URL_PARTS:
-        return Response(status_code=HTTPStatus.BAD_REQUEST.value, content='Invalid path format. Use /bucket/path')
-
+    bucket, object_path = validate_and_parse_path(full_path)
     headers = get_headers(request.headers)
-    auth_header = headers.get('Authorization')
+
+    user_token = validate_auth(headers)
     range_header = headers.get('Range')
 
-    if auth_header is None:
-        return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.phrase)
-
-    user_token = auth_header.split(' ')
-    if len(user_token) != AUTH_HEADER_PARTS:
-        return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.phrase)
-
-    bucket = path_segments[0]
-    object_path = path_segments[1]
-
-    is_index_file = object_path.endswith(CRAM_INDEX_FILE_EXTENSION)
-    rate_limiter = None
-
-    if not is_index_file:
-        if range_header is None:
-            return Response(status_code=HTTPStatus.BAD_REQUEST.value, content=HTTPStatus.BAD_REQUEST.phrase)
-
-        # For every zoom in we get two requests - one for the 'bytes=0-511999' and other for the actual range
-        if range_header != FIRST_BYTE_RANGE:
-            request_bytes = get_byte_range(range_header)
-
-            # TODO save consumption per bucket
-            rate_limiter = DownloadRateLimiter(
-                redis_client=redis_client,
-                http_client=httpx_client,
-                user_token=user_token[1].strip(),
-                request_bytes=request_bytes,
-            )
-
-            try:
-                is_allowed = await rate_limiter.check_user_limit()
-                if not is_allowed:
-                    return Response(
-                        status_code=HTTPStatus.TOO_MANY_REQUESTS.value,
-                        content=HTTPStatus.TOO_MANY_REQUESTS.phrase,
-                    )
-            except HTTPException as e:
-                return Response(status_code=e.status_code, content=e.detail)
+    rate_limiter = await apply_rate_limit_if_applicable(
+        object_path=object_path,
+        range_header=range_header,
+        user_token=user_token,
+        httpx_client=httpx_client,
+        redis_client=redis_client,
+    )
 
     streamer = GCSStreamer(httpx_client=httpx_client)
-    target_url = httpx.URL(scheme='https', host=f'{bucket}.{GCS_BASE_URL}', path=f'/{object_path}')
+    target_url = httpx.URL(
+        scheme='https',
+        host=f'{bucket}.{GCS_BASE_URL}',
+        path=f'/{object_path}',
+    )
+
     gcs_response = await streamer.stream_from_gcs(
         method=request.method,
         target_url=target_url,
@@ -117,7 +85,7 @@ async def proxy_handler(
     )
 
     if rate_limiter and gcs_response.status_code >= HTTPStatus.BAD_REQUEST.value:
-        await rate_limiter.refund()  # TODO can we handle this as a background task in streaming response
+        await rate_limiter.refund()  # TODO make this a background task of streaming response
 
     return gcs_response
 

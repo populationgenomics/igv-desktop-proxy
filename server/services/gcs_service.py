@@ -4,7 +4,7 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx
-from fastapi import Response
+from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 
@@ -50,19 +50,13 @@ class GCSStreamer:
 
         except httpx.RequestError as exc:
             logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
-            return Response(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
-                content=HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
-            )
+            raise HTTPException(HTTPStatus.INTERNAL_SERVER_ERROR) from exc
 
         except httpx.HTTPStatusError as exc:
             await exc.response.aread()
             logging.error(f'HTTP error {exc.response.status_code} while requesting {exc.request.url!r}.')
-            return Response(status_code=exc.response.status_code, content=exc.response.text)
+            raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text) from exc
 
-        except Exception as e:  # noqa: BLE001
-            logging.error(f'Unexpected error: {e}')
-            return Response(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
-                content=HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
-            )
+        except Exception as exc:
+            logging.error(f'Unexpected error: {exec}')
+            raise HTTPException(HTTPStatus.INTERNAL_SERVER_ERROR) from exc

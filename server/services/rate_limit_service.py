@@ -11,7 +11,7 @@ from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponentia
 
 from server.services.redis_rate_limit_service import RateLimitRedisClient
 from server.utils.constants import CPG_HOSTED_DOMAIN, LOCK_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
-from server.utils.util import get_redis_key, is_none
+from server.utils.generic_helper import get_redis_key, is_none
 
 
 class DownloadRateLimiter:

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from fastapi import Response
+from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from server.services.gcs_service import GCSStreamer
@@ -47,15 +47,13 @@ class TestGCSStreamer:
         mock_build_request.return_value = mock_request
         mock_send.side_effect = httpx.RequestError('Network error', request=mock_request)
 
-        response = await self.gcs_streamer.stream_from_gcs(
-            method='GET',
-            target_url='https://test.com/bucket/path',
-            headers={},
-            query_params={},
-        )
-
-        assert isinstance(response, Response)
-        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+        with pytest.raises(HTTPException):
+            await self.gcs_streamer.stream_from_gcs(
+                method='GET',
+                target_url='https://test.com/bucket/path',
+                headers={},
+                query_params={},
+            )
 
     @pytest.mark.asyncio
     @patch.object(httpx.AsyncClient, 'send', new_callable=AsyncMock)
@@ -74,12 +72,10 @@ class TestGCSStreamer:
         mock_build_request.return_value = mock_request
         mock_send.side_effect = error
 
-        response = await self.gcs_streamer.stream_from_gcs(
-            method='GET',
-            target_url='https://test.com/bucket/path',
-            headers={},
-            query_params={},
-        )
-
-        assert isinstance(response, Response)
-        assert response.status_code == HTTPStatus.NOT_FOUND
+        with pytest.raises(HTTPException):
+            await self.gcs_streamer.stream_from_gcs(
+                method='GET',
+                target_url='https://test.com/bucket/path',
+                headers={},
+                query_params={},
+            )

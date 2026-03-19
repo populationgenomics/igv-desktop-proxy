@@ -1,6 +1,6 @@
 from starlette.datastructures import Headers
 
-from server.utils.util import get_byte_range, get_headers, is_none
+from server.utils.generic_helper import get_byte_range, get_headers, is_none
 
 """
 Tests functions in utils.util
