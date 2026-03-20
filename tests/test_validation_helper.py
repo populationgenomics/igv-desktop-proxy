@@ -3,6 +3,7 @@
 from http import HTTPStatus
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
@@ -12,6 +13,8 @@ from server.utils.validation_helper import (
     validate_and_parse_path,
     validate_auth,
 )
+
+dummy_auth_string = 'dummy_value'
 
 
 def test_validate_and_parse_path_success():
@@ -31,9 +34,9 @@ def test_validate_and_parse_path_invalid():
 
 def test_validate_auth_success():
     """Test valid auth header returns the token."""
-    headers = {'Authorization': 'Bearer super-secret-token'}
+    headers = {'Authorization': f'Bearer {dummy_auth_string}'}
     token = validate_auth(headers)
-    assert token == 'super-secret-token'
+    assert token == dummy_auth_string
 
 
 def test_validate_auth_missing():
@@ -50,17 +53,17 @@ def test_validate_auth_invalid_format():
     assert exc.value.status_code == HTTPStatus.UNAUTHORIZED
 
     with pytest.raises(HTTPException) as exc:
-        validate_auth({'Authorization': 'Bearer token extra'})
+        validate_auth({'Authorization': 'Bearer dummy extra'})
     assert exc.value.status_code == HTTPStatus.UNAUTHORIZED
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_if_applicable_index_file(mock_httpx_client, mock_redis_client):
+async def test_rate_limit_if_applicable_index_file(mock_httpx_client: httpx.AsyncClient, mock_redis_client: AsyncMock):
     """Test returning None for index files."""
     result = await rate_limit_if_applicable(
         object_path='file.crai',  # index file
         range_header='bytes=0-100',
-        user_token='token',
+        user_token=dummy_auth_string,
         httpx_client=mock_httpx_client,
         redis_client=mock_redis_client,
     )
@@ -68,13 +71,13 @@ async def test_rate_limit_if_applicable_index_file(mock_httpx_client, mock_redis
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_if_applicable_no_range(mock_httpx_client, mock_redis_client):
+async def test_rate_limit_if_applicable_no_range(mock_httpx_client: httpx.AsyncClient, mock_redis_client: AsyncMock):
     """Test exception when range is completely missing."""
     with pytest.raises(HTTPException) as exc:
         await rate_limit_if_applicable(
             object_path='file.cram',
             range_header=None,
-            user_token='token',
+            user_token=dummy_auth_string,
             httpx_client=mock_httpx_client,
             redis_client=mock_redis_client,
         )
@@ -82,12 +85,15 @@ async def test_rate_limit_if_applicable_no_range(mock_httpx_client, mock_redis_c
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_if_applicable_first_byte_range(mock_httpx_client, mock_redis_client):
+async def test_rate_limit_if_applicable_first_byte_range(
+    mock_httpx_client: httpx.AsyncClient,
+    mock_redis_client: AsyncMock,
+):
     """Test returning None for first byte range check."""
     result = await rate_limit_if_applicable(
         object_path='file.cram',
         range_header='bytes=0-511999',
-        user_token='token',
+        user_token=dummy_auth_string,
         httpx_client=mock_httpx_client,
         redis_client=mock_redis_client,
     )
@@ -95,7 +101,7 @@ async def test_rate_limit_if_applicable_first_byte_range(mock_httpx_client, mock
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_if_applicable_success(mock_httpx_client, mock_redis_client):
+async def test_rate_limit_if_applicable_success(mock_httpx_client: httpx.AsyncClient, mock_redis_client: AsyncMock):
     """Test successful limit check returning rate limiter object."""
     with patch(
         'server.services.rate_limit_service.DownloadRateLimiter.check_user_limit',
@@ -105,7 +111,7 @@ async def test_rate_limit_if_applicable_success(mock_httpx_client, mock_redis_cl
         result = await rate_limit_if_applicable(
             object_path='file.cram',
             range_header='bytes=100-199',
-            user_token='token',
+            user_token=dummy_auth_string,
             httpx_client=mock_httpx_client,
             redis_client=mock_redis_client,
         )
@@ -114,7 +120,10 @@ async def test_rate_limit_if_applicable_success(mock_httpx_client, mock_redis_cl
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_if_applicable_too_many_requests(mock_httpx_client, mock_redis_client):
+async def test_rate_limit_if_applicable_too_many_requests(
+    mock_httpx_client: httpx.AsyncClient,
+    mock_redis_client: AsyncMock,
+):
     """Test limit check failure returning HTTP 429."""
     with patch(
         'server.services.rate_limit_service.DownloadRateLimiter.check_user_limit',
@@ -125,7 +134,7 @@ async def test_rate_limit_if_applicable_too_many_requests(mock_httpx_client, moc
             await rate_limit_if_applicable(
                 object_path='file.cram',
                 range_header='bytes=100-199',
-                user_token='token',
+                user_token=dummy_auth_string,
                 httpx_client=mock_httpx_client,
                 redis_client=mock_redis_client,
             )

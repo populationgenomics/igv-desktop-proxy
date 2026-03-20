@@ -48,8 +48,9 @@ async def rate_limit_if_applicable(
 
     For CRAM files:
         the initial requests usually fetch content from the CRAM index file.
-        Subsequent requests for a specific region typically include one request for the actual byte range and another for the first 512 KB.
-        Rate limiting is therefore applied only when the request targets CRAM data for a specific region beyond the first 512 KB.
+        Subsequent requests for a specific region typically include one request for the actual byte range and another
+        for the first 512 KB. Rate limiting is therefore applied only when the request targets CRAM data
+        for a specific region beyond the first 512 KB.
     """
     is_index_file = object_path.endswith(CRAM_INDEX_FILE_EXTENSION)
 

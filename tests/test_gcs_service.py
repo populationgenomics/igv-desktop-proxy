@@ -12,21 +12,22 @@ from server.services.gcs_service import GCSStreamer
 class TestGCSStreamer:
     """Test GCSStreamer class."""
 
-    @pytest.fixture(autouse=True)
-    def set_up(self, mock_httpx_client: httpx.AsyncClient):
-        """Set up mock GCSStreamer."""
-        self.gcs_streamer = GCSStreamer(mock_httpx_client)
-
     @pytest.mark.asyncio
     @patch.object(httpx.AsyncClient, 'send', new_callable=AsyncMock)
-    async def test_stream_from_gcs_success(self, mock_send: AsyncMock):
+    async def test_stream_from_gcs_success(
+        self,
+        mock_send: AsyncMock,
+        mock_httpx_client: httpx.AsyncClient,
+        mock_download_rate_limiter: MagicMock,
+    ):
         """Test stream_from_gcs success."""
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = HTTPStatus.OK
         mock_response.headers = httpx.Headers({'Content-Length': '100'})
         mock_send.return_value = mock_response
 
-        response = await self.gcs_streamer.stream_from_gcs(
+        gcs_streamer = GCSStreamer(mock_httpx_client, mock_download_rate_limiter)
+        response = await gcs_streamer.stream_from_gcs(
             method='GET',
             target_url='https://test.com/bucket/path',
             headers={},
@@ -39,7 +40,13 @@ class TestGCSStreamer:
     @pytest.mark.asyncio
     @patch.object(httpx.AsyncClient, 'send', new_callable=AsyncMock)
     @patch.object(httpx.AsyncClient, 'build_request')
-    async def test_stream_from_gcs_request_error(self, mock_build_request: AsyncMock, mock_send: AsyncMock):
+    async def test_stream_from_gcs_request_error(
+        self,
+        mock_build_request: AsyncMock,
+        mock_send: AsyncMock,
+        mock_httpx_client: httpx.AsyncClient,
+        mock_download_rate_limiter: MagicMock,
+    ):
         """Test returns error Response when stream_from_gcs fail on server side."""
         mock_request = MagicMock(spec=httpx.Request)
         mock_request.url = httpx.URL('https://test.com/bucket/path')
@@ -47,8 +54,9 @@ class TestGCSStreamer:
         mock_build_request.return_value = mock_request
         mock_send.side_effect = httpx.RequestError('Network error', request=mock_request)
 
+        gcs_streamer = GCSStreamer(mock_httpx_client, mock_download_rate_limiter)
         with pytest.raises(HTTPException):
-            await self.gcs_streamer.stream_from_gcs(
+            await gcs_streamer.stream_from_gcs(
                 method='GET',
                 target_url='https://test.com/bucket/path',
                 headers={},
@@ -58,7 +66,13 @@ class TestGCSStreamer:
     @pytest.mark.asyncio
     @patch.object(httpx.AsyncClient, 'send', new_callable=AsyncMock)
     @patch.object(httpx.AsyncClient, 'build_request')
-    async def test_stream_from_gcs_http_status_error(self, mock_build_request: AsyncMock, mock_send: AsyncMock):
+    async def test_stream_from_gcs_http_status_error(
+        self,
+        mock_build_request: AsyncMock,
+        mock_send: AsyncMock,
+        mock_httpx_client: httpx.AsyncClient,
+        mock_download_rate_limiter: MagicMock,
+    ):
         """Test forward the error Response when stream_from_gcs fail on error response from server."""
         mock_request = MagicMock(spec=httpx.Request)
         mock_request.url = httpx.URL('https://test.com/bucket/path')
@@ -72,8 +86,9 @@ class TestGCSStreamer:
         mock_build_request.return_value = mock_request
         mock_send.side_effect = error
 
+        gcs_streamer = GCSStreamer(mock_httpx_client, mock_download_rate_limiter)
         with pytest.raises(HTTPException):
-            await self.gcs_streamer.stream_from_gcs(
+            await gcs_streamer.stream_from_gcs(
                 method='GET',
                 target_url='https://test.com/bucket/path',
                 headers={},

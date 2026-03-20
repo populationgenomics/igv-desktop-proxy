@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from server.main import app
 from server.services.connection_handler import get_httpx_client, get_redis_client
+from server.services.rate_limit_service import DownloadRateLimiter
 from server.services.redis_rate_limit_service import RateLimitRedisClient
 
 
@@ -46,3 +47,9 @@ def mock_proxy_api(
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def mock_download_rate_limiter() -> MagicMock:
+    """Return a MagicMock that mimics DownloadRateLimiter."""
+    return MagicMock(spec=DownloadRateLimiter)
