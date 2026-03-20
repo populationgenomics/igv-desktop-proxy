@@ -58,7 +58,7 @@ def test_validate_auth_invalid_format():
 async def test_rate_limit_if_applicable_index_file(mock_httpx_client, mock_redis_client):
     """Test returning None for index files."""
     result = await rate_limit_if_applicable(
-        object_path='file.crai', # index file
+        object_path='file.crai',  # index file
         range_header='bytes=0-100',
         user_token='token',
         httpx_client=mock_httpx_client,
@@ -97,12 +97,10 @@ async def test_rate_limit_if_applicable_first_byte_range(mock_httpx_client, mock
 @pytest.mark.asyncio
 async def test_rate_limit_if_applicable_success(mock_httpx_client, mock_redis_client):
     """Test successful limit check returning rate limiter object."""
-    with (
-        patch(
-            'server.services.rate_limit_service.DownloadRateLimiter.check_user_limit',
-            new_callable=AsyncMock,
-        ) as mock_check
-    ):
+    with patch(
+        'server.services.rate_limit_service.DownloadRateLimiter.check_user_limit',
+        new_callable=AsyncMock,
+    ) as mock_check:
         mock_check.return_value = True
         result = await rate_limit_if_applicable(
             object_path='file.cram',
@@ -118,12 +116,10 @@ async def test_rate_limit_if_applicable_success(mock_httpx_client, mock_redis_cl
 @pytest.mark.asyncio
 async def test_rate_limit_if_applicable_too_many_requests(mock_httpx_client, mock_redis_client):
     """Test limit check failure returning HTTP 429."""
-    with (
-        patch(
-            'server.services.rate_limit_service.DownloadRateLimiter.check_user_limit',
-            new_callable=AsyncMock,
-        ) as mock_check
-    ):
+    with patch(
+        'server.services.rate_limit_service.DownloadRateLimiter.check_user_limit',
+        new_callable=AsyncMock,
+    ) as mock_check:
         mock_check.return_value = False
         with pytest.raises(HTTPException) as exc:
             await rate_limit_if_applicable(

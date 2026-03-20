@@ -7,13 +7,16 @@ import httpx
 from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 
+from server.services.rate_limit_service import DownloadRateLimiter
+
 
 class GCSStreamer:
     """Handles streaming data from Google Cloud Storage."""
 
-    def __init__(self, httpx_client: httpx.AsyncClient) -> None:
-        """Initialize client."""
+    def __init__(self, httpx_client: httpx.AsyncClient, rate_limiter: DownloadRateLimiter | None) -> None:
+        """Initialize clients."""
         self.httpx_client = httpx_client
+        self.rate_limiter = rate_limiter
 
     async def stream_from_gcs(
         self,
@@ -48,15 +51,19 @@ class GCSStreamer:
                 headers=dict(gcs_response.headers),
             )
 
-        except httpx.RequestError as exc:
-            logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
-            raise HTTPException(HTTPStatus.INTERNAL_SERVER_ERROR) from exc
-
-        except httpx.HTTPStatusError as exc:
-            await exc.response.aread()
-            logging.error(f'HTTP error {exc.response.status_code} while requesting {exc.request.url!r}.')
-            raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text) from exc
-
         except Exception as exc:
-            logging.error(f'Unexpected error: {exec}')
-            raise HTTPException(HTTPStatus.INTERNAL_SERVER_ERROR) from exc
+            if self.rate_limiter is not None:
+                await (
+                    self.rate_limiter.refund()
+                )  # refund the requested_bytes back to the user's download quota as the request to GCS failed
+
+            if isinstance(exc, httpx.HTTPStatusError):
+                await exc.response.aread()
+                logging.error(f'HTTP error {exc.response.status_code} while requesting {exc.request.url!r}.')
+                raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text) from exc
+            if isinstance(exc, httpx.RequestError):
+                logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
+                raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR) from exc
+
+            logging.error(f'Unexpected error: {exc}')
+            raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR) from exc

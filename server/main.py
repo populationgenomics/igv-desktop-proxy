@@ -76,18 +76,13 @@ async def proxy_handler(
         path=f'/{object_path}',
     )
 
-    streamer = GCSStreamer(httpx_client=httpx_client)
-    gcs_response = await streamer.stream_from_gcs(
+    streamer = GCSStreamer(httpx_client=httpx_client, rate_limiter=rate_limiter)
+    return await streamer.stream_from_gcs(
         method=request.method,
         target_url=target_url,
         headers=headers,
         query_params=request.query_params,
     )
-
-    if rate_limiter and gcs_response.status_code >= HTTPStatus.BAD_REQUEST.value:
-        await rate_limiter.refund()  # TODO make this a background task of streaming response
-
-    return gcs_response
 
 
 if __name__ == '__main__':

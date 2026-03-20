@@ -44,13 +44,19 @@ async def rate_limit_if_applicable(
     httpx_client: httpx.AsyncClient,
     redis_client: RateLimitRedisClient,
 ) -> DownloadRateLimiter | None:
-    """Check if this request should be rate limited."""
+    """Check whether this request should be rate-limited.
+
+    For CRAM files:
+        the initial requests usually fetch content from the CRAM index file.
+        Subsequent requests for a specific region typically include one request for the actual byte range and another for the first 512 KB.
+        Rate limiting is therefore applied only when the request targets CRAM data for a specific region beyond the first 512 KB.
+    """
     is_index_file = object_path.endswith(CRAM_INDEX_FILE_EXTENSION)
 
     if is_index_file:
         return None
 
-    if range_header is None:
+    if range_header is None:  # range header specified for non-index files
         raise HTTPException(HTTPStatus.BAD_REQUEST)
 
     if range_header == FIRST_BYTE_RANGE:
