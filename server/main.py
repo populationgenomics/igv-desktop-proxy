@@ -47,7 +47,7 @@ async def health_check(_request: Request):
     return Response(status_code=200, content='OK')
 
 
-@app.api_route('/{full_path:path}', methods=['GET'])
+@app.api_route('/{full_path:path}', methods=['GET','HEAD'])
 async def proxy_handler(request: Request, full_path: str, client: httpx.AsyncClient = Depends(get_httpx_client)):
     """Proxy requests to GCS."""
     path_segments = full_path.split('/', 1)
