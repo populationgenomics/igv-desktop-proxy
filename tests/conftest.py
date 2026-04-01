@@ -8,9 +8,9 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 
 from server.main import app
-from server.services.connection_handler import get_httpx_client, get_redis_client
-from server.services.rate_limit_service import DownloadRateLimiter
-from server.services.redis_rate_limit_service import RateLimitRedisClient
+from server.utils.connections import get_httpx_client, get_redis_client
+from server.services.rate_limiter import DownloadRateLimiter
+from server.services.rate_limit_store import RateLimitRedisClient
 
 
 @pytest.fixture

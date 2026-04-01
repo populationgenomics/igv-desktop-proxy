@@ -4,7 +4,7 @@ import httpx
 import redis.asyncio as redis
 from fastapi import Request
 
-from server.services.redis_rate_limit_service import RateLimitRedisClient
+from server.services.rate_limit_store import RateLimitRedisClient
 from server.utils.constants import REDIS_DEFAULT_CONFIGS
 
 

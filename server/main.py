@@ -7,16 +7,16 @@ import redis.asyncio as redis
 import uvicorn
 from fastapi import Depends, FastAPI, Request, Response
 
-from server.services.connection_handler import create_redis_pool, get_httpx_client, get_redis_client
+from server.utils.connections import create_redis_pool, get_httpx_client, get_redis_client
 from server.services.gcs_service import GCSStreamer
-from server.services.redis_rate_limit_service import RateLimitRedisClient
+from server.services.rate_limit_store import RateLimitRedisClient
 from server.utils.constants import (
     FASTAPI_DEFAULT_CONFIGS,
     GCS_BASE_URL,
     HTTPX_CLIENT_TIMEOUT,
 )
 from server.utils.generic_helper import get_headers
-from server.utils.validation_helper import rate_limit_if_applicable, validate_and_parse_path, validate_auth
+from server.utils.validation import rate_limit_if_applicable, validate_and_parse_path, validate_auth
 
 logging.getLogger().setLevel(logging.INFO)
 

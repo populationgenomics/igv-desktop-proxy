@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
-from server.services.rate_limit_service import DownloadRateLimiter
+from server.services.rate_limiter import DownloadRateLimiter
 from server.utils.constants import CPG_HOSTED_DOMAIN
 
 

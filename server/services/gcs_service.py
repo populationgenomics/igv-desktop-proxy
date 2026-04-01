@@ -7,7 +7,7 @@ import httpx
 from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 
-from server.services.rate_limit_service import DownloadRateLimiter
+from server.services.rate_limiter import DownloadRateLimiter
 
 
 class GCSStreamer:

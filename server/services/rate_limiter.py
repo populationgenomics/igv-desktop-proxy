@@ -9,7 +9,7 @@ import tenacity
 from fastapi import HTTPException
 from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential_jitter
 
-from server.services.redis_rate_limit_service import RateLimitRedisClient
+from server.services.rate_limit_store import RateLimitRedisClient
 from server.utils.constants import CPG_HOSTED_DOMAIN, LOCK_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
 from server.utils.generic_helper import format_redis_key, is_none
 

@@ -46,9 +46,9 @@ class TestMainAPI:
     @patch('server.main.GCSStreamer')
     def test_proxy_success_index_file(self, mock_gcs_streamer_cls: MagicMock):
         """Test return success when requesting data from index file."""
-        mock_gcs_streamer = mock_gcs_streamer_cls.return_value
-        mock_gcs_response = Response(status_code=HTTPStatus.OK, content=b'fake data')
-        mock_gcs_streamer.stream_from_gcs = AsyncMock(return_value=mock_gcs_response)
+        mock_gcs_streamer_cls.return_value.stream_from_gcs = AsyncMock(
+            return_value=Response(status_code=HTTPStatus.OK, content=b'fake data')
+        )
 
         headers = {'Authorization': 'Bearer token123'}
         response = self.proxy_api.get('/mybucket/path/to/file.crai', headers=headers)
@@ -58,15 +58,12 @@ class TestMainAPI:
 
     @patch('server.main.rate_limit_if_applicable')
     @patch('server.main.GCSStreamer')
-    def test_proxy_success_with_range_limit(self, mock_gcs_streamer_cls: MagicMock, mock_rate_limiter_cls: MagicMock):
+    def test_proxy_success_with_range_limit(self, mock_gcs_streamer_cls: MagicMock, mock_rate_limit_fn: MagicMock):
         """Test return success when requesting data from non-index file."""
-        mock_gcs_streamer = mock_gcs_streamer_cls.return_value
-        mock_gcs_response = Response(status_code=HTTPStatus.PARTIAL_CONTENT, content=b'partial data')
-        mock_gcs_streamer.stream_from_gcs = AsyncMock(return_value=mock_gcs_response)
-
-        # Mock Rate Limiter
-        mock_limiter = mock_rate_limiter_cls.return_value
-        mock_limiter.check_user_limit = AsyncMock(return_value=True)
+        mock_gcs_streamer_cls.return_value.stream_from_gcs = AsyncMock(
+            return_value=Response(status_code=HTTPStatus.PARTIAL_CONTENT, content=b'partial data')
+        )
+        mock_rate_limit_fn.return_value = None
 
         headers = {
             'Authorization': 'Bearer token123',
