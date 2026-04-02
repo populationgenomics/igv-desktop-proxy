@@ -72,7 +72,16 @@ redis_instance = gcp.redis.Instance(
     redis_version='REDIS_7_2',
     region=gcp_config.require('region'),
     authorized_network=network.id,
-    # TODO enable auth
+    auth_enabled=True,
+)
+
+# provide secret manager access to the service manager
+gcp.secretmanager.SecretIamMember(
+    'igv-desktop-proxy-redis-secret-accessor',
+    project=gcp_config.require('project'),
+    secret_id='redis-password',
+    role='roles/secretmanager.secretAccessor',
+    member=service_account.email.apply(lambda e: f'serviceAccount:{e}'),
 )
 
 cloud_run = gcp.cloudrunv2.Service(
@@ -115,6 +124,15 @@ cloud_run = gcp.cloudrunv2.Service(
                     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
                         name='REDIS_PORT',
                         value=redis_instance.port.apply(lambda p: str(p)),
+                    ),
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+                        name='REDIS_PASSWORD',
+                        value_source=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceArgs(
+                            secret_key_ref=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceSecretKeyRefArgs(
+                                secret='redis-password',
+                                version='latest',
+                            )
+                        ),
                     ),
                 ],
                 ports=gcp.cloudrunv2.ServiceTemplateContainerPortsArgs(
