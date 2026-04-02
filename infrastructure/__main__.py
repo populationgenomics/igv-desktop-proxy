@@ -79,7 +79,7 @@ redis_instance = gcp.redis.Instance(
 gcp.secretmanager.SecretIamMember(
     'igv-desktop-proxy-redis-secret-accessor',
     project=gcp_config.require('project'),
-    secret_id='redis-password',
+    secret_id='redis-password',  # noqa:S106
     role='roles/secretmanager.secretAccessor',
     member=service_account.email.apply(lambda e: f'serviceAccount:{e}'),
 )
@@ -129,9 +129,9 @@ cloud_run = gcp.cloudrunv2.Service(
                         name='REDIS_PASSWORD',
                         value_source=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceArgs(
                             secret_key_ref=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceSecretKeyRefArgs(
-                                secret='redis-password',
+                                secret='redis-password',  # noqa:S106
                                 version='latest',
-                            )
+                            ),
                         ),
                     ),
                 ],

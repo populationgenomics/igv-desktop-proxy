@@ -30,7 +30,7 @@ def create_redis_pool() -> redis.ConnectionPool:
     """
     redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS.get('host'))
     redis_port = int(os.environ.get('REDIS_PORT', REDIS_DEFAULT_CONFIGS.get('port')))
-    redis_password = os.environ.get('REDIS_PASSWORD') #
+    redis_password = os.environ.get('REDIS_PASSWORD')
 
     if redis_password:
         url = f'redis://:{redis_password}@{redis_host}:{redis_port}/0'
