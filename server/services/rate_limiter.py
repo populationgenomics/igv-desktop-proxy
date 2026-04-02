@@ -11,7 +11,7 @@ from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponentia
 
 from server.services.rate_limit_store import RateLimitRedisClient
 from server.utils.constants import CPG_HOSTED_DOMAIN, LOCK_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
-from server.utils.generic_helper import format_redis_key, is_none
+from server.utils.helpers import format_redis_key, is_none
 
 
 class DownloadRateLimiter:
@@ -48,20 +48,6 @@ class DownloadRateLimiter:
 
         return await self.evaluate_download_limits()
 
-    async def refund(self) -> None:
-        """Return the reserved bytes to the download budget after a failed GCS request."""
-        if self.user_sub is None:
-            return
-
-        now = time.time()
-        try:
-            assert self.user_sub is not None
-            key = format_redis_key(SUB_PREFIX, self.user_sub)
-            await self.redis_client.refund(key, self.request_bytes, now)
-        except Exception as exc:  # noqa: BLE001
-            logging.error(f'Failed to refund rate-limit quota for user {self.user_sub}: {exc}')
-
-    # TODO we can introduce lru cache here to minimise token - user sub calls to redis
     @retry(retry=retry_if_result(is_none), wait=wait_exponential_jitter(initial=1, max=16), stop=stop_after_attempt(5))
     async def get_authenticated_user_id(self, token_hash: str) -> str | None:
         """Check cache or external service to validate the user access token."""
@@ -103,16 +89,6 @@ class DownloadRateLimiter:
 
         return None
 
-    async def evaluate_download_limits(self) -> bool:
-        """Deduct the requested byte size from the user's download budget if quota not exceeded."""
-        now = time.time()
-
-        assert self.user_sub is not None
-        sub_key = format_redis_key(SUB_PREFIX, self.user_sub)
-        remaining_bytes = await self.redis_client.deduct_if_balance(sub_key, self.request_bytes, now)
-
-        return remaining_bytes >= 0
-
     async def fetch_user_info(self) -> dict | None:
         """Fetch user info from Google's userinfo endpoint."""
         url = 'https://www.googleapis.com/oauth2/v3/userinfo'
@@ -125,3 +101,23 @@ class DownloadRateLimiter:
         except httpx.HTTPError as err:
             logging.error(f'Failed to fetch user info. {err}')
             return None
+
+    async def evaluate_download_limits(self) -> bool:
+        """Deduct the requested byte size from the user's download budget if quota not exceeded."""
+        now = time.time()
+
+        assert self.user_sub is not None
+        sub_key = format_redis_key(SUB_PREFIX, self.user_sub)
+        remaining_bytes = await self.redis_client.deduct_if_balance(sub_key, self.request_bytes, now)
+
+        return remaining_bytes >= 0
+
+    async def refund(self) -> None:
+        """Return the reserved bytes to the download budget after a failed GCS request."""
+        if self.user_sub is None:
+            return
+
+        now = time.time()
+        assert self.user_sub is not None
+        key = format_redis_key(SUB_PREFIX, self.user_sub)
+        await self.redis_client.refund(key, self.request_bytes, now)

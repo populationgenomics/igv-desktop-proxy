@@ -3,10 +3,10 @@ from http import HTTPStatus
 import httpx
 from fastapi import HTTPException
 
-from server.services.rate_limiter import DownloadRateLimiter
 from server.services.rate_limit_store import RateLimitRedisClient
+from server.services.rate_limiter import DownloadRateLimiter
 from server.utils.constants import AUTH_HEADER_PARTS, CRAM_INDEX_FILE_EXTENSION, FIRST_BYTE_RANGE, REQUEST_URL_PARTS
-from server.utils.generic_helper import get_byte_range
+from server.utils.helpers import get_byte_range
 
 
 def validate_and_parse_path(full_path: str) -> tuple[str, str]:

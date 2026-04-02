@@ -28,8 +28,8 @@ def is_none(value: Any) -> bool:
     return value is None
 
 
-def format_redis_key(prefix: str, key: str) -> str | None:
+def format_redis_key(prefix: str | None, key: str) -> str | None:
     """Return the redis key combined with a prefix."""
-    if is_none(key) or is_none(prefix):
-        return None
+    if is_none(prefix):
+        return key
     return f'{prefix}:{key}'

@@ -1,5 +1,3 @@
-"""Tests for validation_helper."""
-
 from http import HTTPStatus
 from unittest.mock import AsyncMock, patch
 
@@ -58,7 +56,10 @@ def test_validate_auth_invalid_format():
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_not_applied_for_index_file(mock_httpx_client: httpx.AsyncClient, mock_redis_client: AsyncMock):
+async def test_rate_limit_not_applied_for_index_file(
+    mock_httpx_client: httpx.AsyncClient,
+    mock_redis_client: AsyncMock,
+):
     """Test returning None for index files."""
     result = await rate_limit_if_applicable(
         object_path='file.cram.crai',  # index file
@@ -71,7 +72,10 @@ async def test_rate_limit_not_applied_for_index_file(mock_httpx_client: httpx.As
 
 
 @pytest.mark.asyncio
-async def test_raise_error_when_range_not_specified_for_non_index_files(mock_httpx_client: httpx.AsyncClient, mock_redis_client: AsyncMock):
+async def test_raise_error_when_range_not_specified_for_non_index_files(
+    mock_httpx_client: httpx.AsyncClient,
+    mock_redis_client: AsyncMock,
+):
     """Test exception when range is completely missing for non-index files."""
     with pytest.raises(HTTPException) as exc:
         await rate_limit_if_applicable(

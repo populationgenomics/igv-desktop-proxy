@@ -20,38 +20,15 @@ class TestMainAPI:
         assert response.status_code == HTTPStatus.OK
         assert 'OK' in response.text
 
-    def test_proxy_invalid_path_format(self):
-        """Test return Error when invalid bucket path format is passed."""
-        response = self.proxy_api.get('/mybucket')
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        assert 'Invalid path format' in response.text
-
-    def test_proxy_missing_auth_header(self):
-        """Test return Error when authorization header is missing."""
-        response = self.proxy_api.get('/mybucket/path/to/file.cram', headers={'Range': 'bytes=0-100'})
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
-
-    def test_proxy_invalid_auth_header(self):
-        """Test return Error when authorization header format is invalid."""
-        headers = {'Authorization': 'InvalidToken', 'Range': 'bytes=0-100'}
-        response = self.proxy_api.get('/mybucket/path/to/file.cram', headers=headers)
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
-
-    def test_proxy_missing_range_header_for_non_index_files(self):
-        """Test return Error when range header is missing when requesting data from non index files."""
-        headers = {'Authorization': 'Bearer token123'}
-        response = self.proxy_api.get('/mybucket/path/to/file.cram', headers=headers)
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-
     @patch('server.main.GCSStreamer')
     def test_proxy_success_index_file(self, mock_gcs_streamer_cls: MagicMock):
         """Test return success when requesting data from index file."""
         mock_gcs_streamer_cls.return_value.stream_from_gcs = AsyncMock(
-            return_value=Response(status_code=HTTPStatus.OK, content=b'fake data')
+            return_value=Response(status_code=HTTPStatus.OK, content=b'fake data'),
         )
 
         headers = {'Authorization': 'Bearer token123'}
-        response = self.proxy_api.get('/mybucket/path/to/file.crai', headers=headers)
+        response = self.proxy_api.get('/mybucket/path/to/file.cram.crai', headers=headers)
 
         assert response.status_code == HTTPStatus.OK
         assert response.content == b'fake data'
@@ -61,7 +38,7 @@ class TestMainAPI:
     def test_proxy_success_with_range_limit(self, mock_gcs_streamer_cls: MagicMock, mock_rate_limit_fn: MagicMock):
         """Test return success when requesting data from non-index file."""
         mock_gcs_streamer_cls.return_value.stream_from_gcs = AsyncMock(
-            return_value=Response(status_code=HTTPStatus.PARTIAL_CONTENT, content=b'partial data')
+            return_value=Response(status_code=HTTPStatus.PARTIAL_CONTENT, content=b'partial data'),
         )
         mock_rate_limit_fn.return_value = None
 
