@@ -31,16 +31,16 @@ def test_get_headers():
             },
         ),
     )
-    assert filtered == {'range': 'bytes=0-100'}
+    assert filtered == {'Authorization': 'Bearer token123'}
 
     filtered = get_headers(
         Headers(
             {
-                'Range': 'bytes=0-100',
+                'range': 'bytes=0-100',
             },
         ),
     )
-    assert filtered == {'Authorization': 'Bearer token123'}
+    assert filtered == {'Range': 'bytes=0-100'}
 
 
 def test_is_none():
