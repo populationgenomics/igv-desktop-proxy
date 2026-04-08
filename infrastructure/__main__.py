@@ -3,6 +3,7 @@ import pulumi_docker as docker
 import pulumi_gcp as gcp
 from pulumi import Config, get_stack
 from pulumi_docker import BuilderVersion
+from stats_exporter_cloud_function import create_download_stats_exporter_resources
 
 stack = get_stack()
 gcp_config = Config('gcp')
@@ -211,3 +212,12 @@ gcp.compute.GlobalForwardingRule(
 
 
 pulumi.export('load balancer ip', ip_address.address)
+
+create_download_stats_exporter_resources(
+    stack=stack,
+    gcp_config=gcp_config,
+    app_config=app_config,
+    redis_instance=redis_instance,
+    network=network,
+    subnetwork=subnetwork,
+)

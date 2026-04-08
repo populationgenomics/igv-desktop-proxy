@@ -24,6 +24,7 @@ class GCSStreamer:
         target_url: str | httpx.URL,
         headers: dict[str, str],
         query_params: Any,
+        bucket_name: str,
     ) -> Response:
         """Fetch data and streams the response back to the client."""
         try:
@@ -42,6 +43,8 @@ class GCSStreamer:
                 try:
                     async for chunk in gcs_response.aiter_raw():
                         yield chunk
+                    if self.rate_limiter is not None:
+                        await self.rate_limiter.record_download_stats(bucket_name)
                 finally:
                     await gcs_response.aclose()
 

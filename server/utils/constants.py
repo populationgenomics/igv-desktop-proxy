@@ -21,6 +21,9 @@ SUB_PREFIX = 'sub'
 LOCK_PREFIX = 'lock'
 TOKEN_HASH_PREFIX = 'token_hash'  # noqa: S105
 
+STATS_PREFIX = 'dl_stats'
+STATS_KEY_TTL_SECS = 176400  # 49 hours (safety net TTL)
+
 REDIS_DEFAULT_CONFIGS = {
     'host': 'localhost',
     'port': '6379',

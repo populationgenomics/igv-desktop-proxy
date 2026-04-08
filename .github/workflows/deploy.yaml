@@ -59,6 +59,12 @@ jobs:
       - name: Install the project
         run: uv sync --locked
 
+      - name: Package Cloud Function Archive
+        run: |
+          cd stats_exporter
+          zip source.zip main.py pyproject.toml
+
+
       - uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
         with:
           command: up

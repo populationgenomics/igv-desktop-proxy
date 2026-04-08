@@ -6,7 +6,7 @@ import redis.asyncio as redis
 from server.resources.deduct_from_budget_lua_script import DEDUCT_LUA_SCRIPT
 from server.resources.refund_to_budget_lua_script import REFUND_LUA_SCRIPT
 from server.resources.release_lock_lua_script import RELEASE_LOCK_LUA_SCRIPT
-from server.utils.constants import CAPPED_TIME_WINDOW_SECS, DOWNLOAD_CAP_BYTES
+from server.utils.constants import CAPPED_TIME_WINDOW_SECS, DOWNLOAD_CAP_BYTES, STATS_KEY_TTL_SECS
 
 
 class RateLimitRedisClient:
@@ -45,6 +45,14 @@ class RateLimitRedisClient:
             keys=[token_hash],
             args=[uuid.bytes],
         )
+
+    async def increment_download_stats(self, stats_key: str, bytes_count: int) -> None:
+        """Increment the download byte counter for a (user, bucket, date) key.
+
+        Sets a 49-hour TTL on first write.
+        """
+        await self._client.incrby(stats_key, bytes_count)
+        await self._client.expire(stats_key, STATS_KEY_TTL_SECS, nx=True)
 
     async def aclose(self) -> None:
         """Close the Redis connection and removes local script references."""

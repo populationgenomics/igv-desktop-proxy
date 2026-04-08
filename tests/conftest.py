@@ -23,6 +23,7 @@ def mock_redis_client() -> MagicMock:
     redis_client.deduct = AsyncMock(return_value=512_000)
     redis_client.refund = AsyncMock(return_value=1)
     redis_client.release_lock = AsyncMock(return_value=1)
+    redis_client.increment_download_stats = AsyncMock(return_value=None)
     redis_client.aclose = AsyncMock(return_value=None)
     return redis_client
 
@@ -52,4 +53,7 @@ def mock_proxy_api(
 @pytest.fixture
 def mock_download_rate_limiter() -> MagicMock:
     """Return a MagicMock that mimics DownloadRateLimiter."""
-    return MagicMock(spec=DownloadRateLimiter)
+    limiter = MagicMock(spec=DownloadRateLimiter)
+    limiter.refund = AsyncMock(return_value=None)
+    limiter.record_download_stats = AsyncMock(return_value=None)
+    return limiter

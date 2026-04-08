@@ -82,6 +82,7 @@ async def proxy_handler(
         target_url=target_url,
         headers=headers,
         query_params=request.query_params,
+        bucket_name=bucket,
     )
 
 

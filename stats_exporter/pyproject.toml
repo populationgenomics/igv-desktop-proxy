@@ -1,0 +1,9 @@
+[project]
+name = "igv-desktop-proxy-download-stats-exporter"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "redis==7.3.0",
+    "google-cloud-storage>=3.0.0",
+    "functions-framework>=3.0.0",
+]

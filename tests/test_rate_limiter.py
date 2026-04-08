@@ -146,6 +146,21 @@ class TestDownloadRateLimiter:
         assert result is False
 
     @pytest.mark.asyncio
+    async def test_record_download_stats_calls_increment(self):
+        """Test record_download_stats increments the correct Redis key."""
+        self.rate_limiter.user_sub = 'user123'
+        await self.rate_limiter.record_download_stats('test-bucket')
+        self.redis_client.increment_download_stats.assert_called_once()
+        call_args = self.redis_client.increment_download_stats.call_args
+        assert call_args.kwargs['stats_key'].startswith('dl_stats:user123:test-bucket:')
+
+    @pytest.mark.asyncio
+    async def test_record_download_stats_skips_when_user_sub_is_none(self):
+        """Test record_download_stats does nothing when user_sub is not set."""
+        await self.rate_limiter.record_download_stats('test-bucket')
+        self.redis_client.increment_download_stats.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_refund_skips_when_user_sub_is_none(self):
         """Test refund does nothing when user_sub is not set."""
         # user_sub is None by default from the constructor

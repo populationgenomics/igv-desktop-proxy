@@ -2,6 +2,7 @@ import hashlib
 import logging
 import time
 import uuid
+from datetime import UTC, datetime
 from http import HTTPStatus
 
 import httpx
@@ -10,7 +11,7 @@ from fastapi import HTTPException
 from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential_jitter
 
 from server.services.rate_limit_store import RateLimitRedisClient
-from server.utils.constants import CPG_HOSTED_DOMAIN, LOCK_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
+from server.utils.constants import CPG_HOSTED_DOMAIN, LOCK_PREFIX, STATS_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
 from server.utils.helpers import format_redis_key, is_none
 
 
@@ -30,7 +31,6 @@ class DownloadRateLimiter:
 
         self.user_token = user_token
         self.request_bytes = request_bytes  # bytes; IGV typically requests 512 KB per request
-
         self.user_sub: str | None = None
 
     async def check_user_limit(self) -> bool:
@@ -111,6 +111,14 @@ class DownloadRateLimiter:
         remaining_bytes = await self.redis_client.deduct_if_balance(sub_key, self.request_bytes, now)
 
         return remaining_bytes >= 0
+
+    async def record_download_stats(self, bucket: str) -> None:
+        """Record successfully streamed bytes into the daily download stats."""
+        if self.user_sub is None:
+            return
+        date_str = datetime.now(UTC).strftime('%Y-%m-%d')
+        stats_key = f'{STATS_PREFIX}:{self.user_sub}:{bucket}:{date_str}'
+        await self.redis_client.increment_download_stats(stats_key=stats_key, bytes_count=self.request_bytes)
 
     async def refund(self) -> None:
         """Return the reserved bytes to the download budget after a failed GCS request."""
