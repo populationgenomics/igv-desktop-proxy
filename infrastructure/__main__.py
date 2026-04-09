@@ -106,7 +106,7 @@ redis_password_version = gcp.secretmanager.SecretVersion(
     opts=gcp_opts,
 )
 
-# provide secret manager access to the service manager
+# provide secret manager access to cloud run service account
 redis_iam = gcp.secretmanager.SecretIamMember(
     'igv-desktop-proxy-redis-secret-accessor',
     project=_gcp_project,
@@ -119,7 +119,7 @@ redis_iam = gcp.secretmanager.SecretIamMember(
 cloud_run = gcp.cloudrunv2.Service(
     'igv-desktop-proxy',
     name=f'igv-desktop-proxy-{stack}',
-    ingress='INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER',
+    ingress='INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER', # accepts traffic only from the ALB
     location=_gcp_region,
     default_uri_disabled=True,
     template=gcp.cloudrunv2.ServiceTemplateArgs(
@@ -129,7 +129,7 @@ cloud_run = gcp.cloudrunv2.Service(
             min_instance_count=0,
             max_instance_count=10,
         ),
-        vpc_access=gcp.cloudrunv2.ServiceTemplateVpcAccessArgs(
+        vpc_access=gcp.cloudrunv2.ServiceTemplateVpcAccessArgs( # configure connection to the redis instance
             network_interfaces=[
                 gcp.cloudrunv2.ServiceTemplateVpcAccessNetworkInterfaceArgs(
                     network=network.id,
@@ -180,7 +180,7 @@ cloud_run = gcp.cloudrunv2.Service(
     ),
 )
 
-# Allow cloud run unauthenticated access
+# Allow all users access to cloud run service
 gcp.cloudrunv2.ServiceIamMember(
     'igv-desktop-proxy-public-access-binding',
     project=cloud_run.project,
@@ -202,6 +202,7 @@ neg = gcp.compute.RegionNetworkEndpointGroup(
     opts=gcp_opts,
 )
 
+# integrate with cloud armor
 private_stack = pulumi.StackReference(_private_config_stack)
 security_policy_id = private_stack.get_output('security_policy_id')
 

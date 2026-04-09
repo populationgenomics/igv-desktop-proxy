@@ -17,7 +17,7 @@ logging.basicConfig(
 
 STATS_KEY_PREFIX = 'dl_stats'
 EXPIRE_AFTER_EXPORT_SECS = 300  # 5 minutes
-
+DOWNLOAD_STATS_PREFIX = 'download-stats'
 
 def _get_redis_client() -> redis.Redis:
     host = os.environ['REDIS_HOST']
@@ -76,11 +76,10 @@ def export_download_stats(_request: flask.Request) -> tuple[str, int]:
 
     logging.info(f'Loaded {len(records)} records for {yesterday}', len(records), yesterday)
 
-    # write to GCS as CSV
+    # write the entries to GCS as a summary CSV
     year, month, day = yesterday.split('-')
-    gcs_prefix = os.environ.get('GCS_STATS_PREFIX', 'download-stats')
     gcs_bucket_name = os.environ['GCS_STATS_BUCKET']
-    gcs_object_name = f'{gcs_prefix}/year={year}/month={month}/day={day}/summary.csv'
+    gcs_object_name = f'{DOWNLOAD_STATS_PREFIX}/year={year}/month={month}/day={day}/summary.csv'
 
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=['user_id', 'bucket', 'bytes'])
