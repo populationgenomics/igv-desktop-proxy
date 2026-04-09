@@ -41,7 +41,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
 
     # create service account
     download_stats_exporter_sa = gcp.serviceaccount.Account(
-        'download-stats-exporter-service-account',
+        'download-stats-export-service-account',
         account_id=f'download-stats-exporter-{stack}',
         display_name=f'IGV desktop proxy download stats exporter ({stack})',
         opts=gcp_opts,
@@ -140,15 +140,15 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
 
     # service account for the cloud scheduler that export data from redis to GCS
     scheduler_sa = gcp.serviceaccount.Account(
-        'download-stats-exporter-scheduler-sa',
-        account_id=f'download-stats-export-scheduler-{stack}',
+        'download-stats-export-scheduler-sa',
+        account_id=f'dl-stats-export-scheduler-{stack}',
         display_name=f'IGV desktop proxy download stats export scheduler ({stack})',
         opts=gcp_opts,
     )
 
     # Allow Cloud Scheduler to invoke the Cloud Function
     gcp.cloudfunctionsv2.FunctionIamMember(
-        'stats-exporter-scheduler-invoker',
+        'stats-export-scheduler-invoker',
         project=_gcp_project,
         location=_gcp_region,
         cloud_function=cloud_function.name,
@@ -159,7 +159,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
 
     # Cloud Scheduler job — triggers the function daily at 20:00 UTC (06:00 AEST)
     gcp.cloudscheduler.Job(
-        'download-stats-exporter-scheduler',
+        'download-stats-export-scheduler',
         name=f'igv-desktop-proxy-dowload-stats-export-scheduler-{stack}',
         region=_gcp_region,
         opts=gcp_opts,
