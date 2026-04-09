@@ -19,6 +19,7 @@ STATS_KEY_PREFIX = 'dl_stats'
 EXPIRE_AFTER_EXPORT_SECS = 300  # 5 minutes
 DOWNLOAD_STATS_PREFIX = 'download-stats'
 
+
 def _get_redis_client() -> redis.Redis:
     host = os.environ['REDIS_HOST']
     port = int(os.environ.get('REDIS_PORT', '6379'))

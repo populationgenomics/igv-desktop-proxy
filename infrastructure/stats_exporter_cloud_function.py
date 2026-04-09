@@ -5,7 +5,7 @@ import pulumi_gcp as gcp
 from pulumi import ResourceOptions
 
 
-def create_download_stats_exporter_resources(
+def create_download_stats_exporter_resources(  # noqa: PLR0913
     stack: str,
     redis_instance: gcp.redis.Instance,
     redis_password_secret: gcp.secretmanager.Secret,
@@ -31,8 +31,10 @@ def create_download_stats_exporter_resources(
         lifecycle_rules=[
             gcp.storage.BucketLifecycleRuleArgs(
                 action=gcp.storage.BucketLifecycleRuleActionArgs(type='Delete'),
-                condition=gcp.storage.BucketLifecycleRuleConditionArgs(age=90), # retain objects up tp 90 days for auditing
-            )
+                condition=gcp.storage.BucketLifecycleRuleConditionArgs(
+                    age=90,
+                ),  # retain objects up tp 90 days for auditing
+            ),
         ],
         opts=gcp_opts,
     )
@@ -131,9 +133,9 @@ def create_download_stats_exporter_resources(
             ],
         ),
         opts=ResourceOptions(
-        provider=gcp_provider,
-        depends_on=[redis_iam, redis_password_version],
-    ),
+            provider=gcp_provider,
+            depends_on=[redis_iam, redis_password_version],
+        ),
     )
 
     # service account for the cloud scheduler that export data from redis to GCS
@@ -164,14 +166,15 @@ def create_download_stats_exporter_resources(
         description='Triggers daily download stats export from Redis to GCS',
         schedule='0 20 * * *',
         time_zone='UTC',
-        attempt_deadline='600s', # wait up to for the cloud function to finish
+        attempt_deadline='600s',  # wait up to for the cloud function to finish
         retry_config=gcp.cloudscheduler.JobRetryConfigArgs(
             retry_count=3,
-            min_backoff_duration='60s', # wait at least 60 seconds before firing the first
-            max_backoff_duration='3600s', # maximum time it will wait between retries
+            min_backoff_duration='60s',  # wait at least 60 seconds before firing the first
+            max_backoff_duration='3600s',  # maximum time it will wait between retries
             max_retry_duration='0s',
         ),
-        http_target=gcp.cloudscheduler.JobHttpTargetArgs( # Invoke the cloud function by sending an HTTP POST request to the URL
+        http_target=gcp.cloudscheduler.JobHttpTargetArgs(
+            # Invoke the cloud function by sending an HTTP POST request to the URL
             uri=cloud_function.url,
             http_method='POST',
             oidc_token=gcp.cloudscheduler.JobHttpTargetOidcTokenArgs(

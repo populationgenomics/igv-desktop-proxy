@@ -119,7 +119,7 @@ redis_iam = gcp.secretmanager.SecretIamMember(
 cloud_run = gcp.cloudrunv2.Service(
     'igv-desktop-proxy',
     name=f'igv-desktop-proxy-{stack}',
-    ingress='INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER', # accepts traffic only from the ALB
+    ingress='INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER',  # accepts traffic only from the ALB
     location=_gcp_region,
     default_uri_disabled=True,
     template=gcp.cloudrunv2.ServiceTemplateArgs(
@@ -129,7 +129,7 @@ cloud_run = gcp.cloudrunv2.Service(
             min_instance_count=0,
             max_instance_count=10,
         ),
-        vpc_access=gcp.cloudrunv2.ServiceTemplateVpcAccessArgs( # configure connection to the redis instance
+        vpc_access=gcp.cloudrunv2.ServiceTemplateVpcAccessArgs(  # configure connection to the redis instance
             network_interfaces=[
                 gcp.cloudrunv2.ServiceTemplateVpcAccessNetworkInterfaceArgs(
                     network=network.id,
