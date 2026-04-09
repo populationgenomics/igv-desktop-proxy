@@ -56,7 +56,9 @@ def batch_get_values(r: redis.Redis, keys: list[str], chunk_size: int = 500) -> 
 
 @functions_framework.http
 def export_download_stats(_request: flask.Request) -> tuple[str, int]:
-    """Export yesterday's download stats from Redis to GCS as a CSV."""
+    """Export yesterday's download stats from Redis to GCS as a CSV.
+        Reference: https://docs.cloud.google.com/run/docs/write-functions#python_1
+    """
     yesterday = (datetime.now(UTC) - timedelta(days=1)).strftime('%Y-%m-%d')
 
     redis_client = _get_redis_client()
