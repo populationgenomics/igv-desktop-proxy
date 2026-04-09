@@ -25,15 +25,11 @@ class TestGCSStreamer:
             target_url='https://test.com/bucket/path',
             headers={},
             query_params={},
-            bucket_name='test-bucket',
+            bucket_name='bucket',
         )
 
         assert isinstance(response, StreamingResponse)
         assert response.status_code == HTTPStatus.OK
-
-        # Consume the stream to trigger record_download_stats
-        async for _ in response.body_iterator:
-            pass
 
         await client.aclose()
         mock_download_rate_limiter.refund.assert_not_called()

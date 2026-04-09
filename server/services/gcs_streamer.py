@@ -43,10 +43,11 @@ class GCSStreamer:
                 try:
                     async for chunk in gcs_response.aiter_raw():
                         yield chunk
-                    if self.rate_limiter is not None:
-                        await self.rate_limiter.record_download_stats(bucket_name)
                 finally:
                     await gcs_response.aclose()
+
+            if self.rate_limiter is not None:
+                await self.rate_limiter.record_download_stats(bucket_name)
 
             return StreamingResponse(
                 stream_wrapper(),
