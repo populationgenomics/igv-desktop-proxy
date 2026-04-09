@@ -65,14 +65,16 @@ network = gcp.compute.Network(
     'igv-desktop-proxy-network',
     name=f'igv-proxy-network-{stack}',
     auto_create_subnetworks=False,
+    opts=gcp_opts,
 )
 
 subnetwork = gcp.compute.Subnetwork(
     'igv-desktop-proxy-subnetwork',
     name=f'igv-proxy-subnetwork-{stack}',
     ip_cidr_range='10.0.0.0/24',
-    region=gcp_config.require('region'),
+    region=_gcp_region,
     network=network.id,
+    opts=gcp_opts,
 )
 
 redis_instance = gcp.redis.Instance(
@@ -81,18 +83,37 @@ redis_instance = gcp.redis.Instance(
     memory_size_gb=1,
     tier='BASIC',
     redis_version='REDIS_7_2',
-    region=gcp_config.require('region'),
+    region=_gcp_region,
     authorized_network=network.id,
     auth_enabled=True,
+    opts=gcp_opts,
+)
+
+# Store Redis password in Secret Manager
+redis_password_secret = gcp.secretmanager.Secret(
+    'redis-password',
+    secret_id='redis-password',  # noqa:S106
+    replication=gcp.secretmanager.SecretReplicationArgs(
+        auto=gcp.secretmanager.SecretReplicationAutoArgs(),
+    ),
+    opts=gcp_opts,
+)
+
+redis_password_version = gcp.secretmanager.SecretVersion(
+    'redis-password-version',
+    secret=redis_password_secret.id,
+    secret_data=redis_instance.auth_string,
+    opts=gcp_opts,
 )
 
 # provide secret manager access to the service manager
-gcp.secretmanager.SecretIamMember(
+redis_iam = gcp.secretmanager.SecretIamMember(
     'igv-desktop-proxy-redis-secret-accessor',
-    project=gcp_config.require('project'),
-    secret_id='redis-password',  # noqa:S106
+    project=_gcp_project,
+    secret_id=redis_password_secret.secret_id,
     role='roles/secretmanager.secretAccessor',
     member=service_account.email.apply(lambda e: f'serviceAccount:{e}'),
+    opts=gcp_opts,
 )
 
 cloud_run = gcp.cloudrunv2.Service(
@@ -140,7 +161,7 @@ cloud_run = gcp.cloudrunv2.Service(
                         name='REDIS_PASSWORD',
                         value_source=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceArgs(
                             secret_key_ref=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceSecretKeyRefArgs(
-                                secret='redis-password',  # noqa:S106
+                                secret=redis_password_secret.secret_id,
                                 version='latest',
                             ),
                         ),
@@ -153,7 +174,10 @@ cloud_run = gcp.cloudrunv2.Service(
             ),
         ],
     ),
-    opts=gcp_opts,
+    opts=ResourceOptions(
+        provider=gcp_provider,
+        depends_on=[redis_iam, redis_password_version],
+    ),
 )
 
 # Allow cloud run unauthenticated access
@@ -235,11 +259,13 @@ gcp.compute.GlobalForwardingRule(
 
 pulumi.export('load balancer ip', ip_address.address)
 
+# create cloud run function to export download stats
 create_download_stats_exporter_resources(
     stack=stack,
-    gcp_config=gcp_config,
-    app_config=app_config,
     redis_instance=redis_instance,
+    redis_password_secret=redis_password_secret,
+    redis_password_version=redis_password_version,
     network=network,
     subnetwork=subnetwork,
+    gcp_provider=gcp_provider,
 )

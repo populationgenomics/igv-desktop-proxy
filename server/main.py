@@ -48,6 +48,34 @@ async def health_check(_request: Request):
     return Response(status_code=HTTPStatus.OK, content='OK. Server is healthy.')
 
 
+@app.api_route('/{full_path:path}', methods=['HEAD'])
+async def proxy_handler_metadata(
+    request: Request,
+    full_path: str,
+    httpx_client: httpx.AsyncClient = Depends(get_httpx_client),
+):
+    """Proxy requests to GCS. Rate limit logics are not applied."""
+    bucket, object_path = validate_and_parse_path(full_path)
+    headers = get_headers(request.headers)
+
+    validate_auth(headers)
+
+    target_url = httpx.URL(
+        scheme='https',
+        host=f'{bucket}.{GCS_BASE_URL}',
+        path=f'/{object_path}',
+    )
+
+    streamer = GCSStreamer(httpx_client=httpx_client, rate_limiter=None)
+    return await streamer.stream_from_gcs(
+        method=request.method,
+        target_url=target_url,
+        headers=headers,
+        query_params=request.query_params,
+        bucket_name=bucket,
+    )
+
+
 @app.api_route('/{full_path:path}', methods=['GET'])
 async def proxy_handler(
     request: Request,

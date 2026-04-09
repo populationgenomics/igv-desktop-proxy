@@ -1,51 +1,74 @@
+import os
+
 import pulumi
 import pulumi_gcp as gcp
-from pulumi import Config, FileArchive
+from pulumi import ResourceOptions
 
 
 def create_download_stats_exporter_resources(
     stack: str,
-    gcp_config: Config,
-    app_config: Config,
     redis_instance: gcp.redis.Instance,
+    redis_password_secret: gcp.secretmanager.Secret,
+    redis_password_version: gcp.secretmanager.SecretVersion,
     network: gcp.compute.Network,
     subnetwork: gcp.compute.Subnetwork,
+    gcp_provider: gcp.Provider,
 ) -> None:
     """Create Cloud Function and Cloud Scheduler resources for the download stats exporter."""
-    stats_archive_bucket = app_config.require('stats_archive_bucket')
-    cloud_function_source_bucket = app_config.require('cloud_function_source_bucket')
-    region = gcp_config.require('region')
-    project = gcp_config.require('project')
+    _stats_archive_bucket = os.environ['APP_CONFIG_STATS_ARCHIVE_BUCKET']
+    _cloud_function_source_bucket = os.environ['APP_CONFIG_CLOUD_FUNCTION_SOURCE_BUCKET']
+
+    gcp_opts = ResourceOptions(provider=gcp_provider)
+    gcp_region = gcp_provider.region
+    gcp_project = gcp_provider.project
+
+    stats_archive_bucket = gcp.storage.Bucket(
+        'stats-archive-bucket',
+        name=_stats_archive_bucket,
+        location=gcp_region,
+        uniform_bucket_level_access=True,
+        lifecycle_rules=[
+            gcp.storage.BucketLifecycleRuleArgs(
+                action=gcp.storage.BucketLifecycleRuleActionArgs(type='Delete'),
+                condition=gcp.storage.BucketLifecycleRuleConditionArgs(age=90),
+            )
+        ],
+        opts=gcp_opts,
+    )
 
     stats_exporter_sa = gcp.serviceaccount.Account(
         'stats-exporter-service-account',
         account_id=f'stats-exporter-{stack}',
         display_name=f'IGV desktop proxy download stats exporter ({stack})',
+        opts=gcp_opts,
     )
 
     # Allow the stats exporter SA to write objects to the stats GCS bucket
     gcp.storage.BucketIAMMember(
         'stats-exporter-gcs-writer',
-        bucket=stats_archive_bucket,
+        bucket=stats_archive_bucket.name,
         role='roles/storage.objectCreator',
         member=stats_exporter_sa.email.apply(lambda e: f'serviceAccount:{e}'),
+        opts=gcp_opts,
     )
 
     # Allow the stats exporter SA to read the Redis password secret
-    gcp.secretmanager.SecretIamMember(
+    redis_iam = gcp.secretmanager.SecretIamMember(
         'stats-exporter-redis-secret-accessor',
-        project=project,
-        secret_id='redis-password',  # noqa:S106
+        project=gcp_project,
+        secret_id=redis_password_secret.secret_id,
         role='roles/secretmanager.secretAccessor',
         member=stats_exporter_sa.email.apply(lambda e: f'serviceAccount:{e}'),
+        opts=gcp_opts,
     )
 
     # GCS bucket to hold the Cloud Function source archive
     source_bucket = gcp.storage.Bucket(
         'stats-exporter-source-bucket',
-        name=cloud_function_source_bucket,
-        location=region,
+        name=_cloud_function_source_bucket,
+        location=gcp_region,
         uniform_bucket_level_access=True,
+        opts=gcp_opts,
     )
 
     # Upload the cloud_function
@@ -54,6 +77,7 @@ def create_download_stats_exporter_resources(
         bucket=source_bucket.name,
         name='source.zip',
         source=pulumi.FileAsset('../stats_exporter/source.zip'),
+        opts=gcp_opts,
     )
 
     # Build the environment variables dict,
@@ -64,15 +88,15 @@ def create_download_stats_exporter_resources(
         lambda args: {
             'REDIS_HOST': args['host'],
             'REDIS_PORT': args['port'],
-            'GCS_STATS_BUCKET': stats_archive_bucket
-        }
+            'GCS_STATS_BUCKET': _stats_archive_bucket,
+        },
     )
 
     # Cloud Function Gen 2
     cloud_function = gcp.cloudfunctionsv2.Function(
         'stats-exporter-function',
-        name=f'stats-exporter-{stack}',
-        location=region,
+        name=f'igv-desktop-proxy-stats-exporter-{stack}',
+        location=gcp_region,
         build_config=gcp.cloudfunctionsv2.FunctionBuildConfigArgs(
             runtime='python311',
             entry_point='export_download_stats',
@@ -86,6 +110,7 @@ def create_download_stats_exporter_resources(
         service_config=gcp.cloudfunctionsv2.FunctionServiceConfigArgs(
             available_memory='512M',
             service_account_email=stats_exporter_sa.email,
+            ingress_settings='ALLOW_INTERNAL_AND_GCLB',
             direct_vpc_egress='VPC_EGRESS_PRIVATE_RANGES_ONLY',
             direct_vpc_network_interfaces=[
                 gcp.cloudfunctionsv2.FunctionServiceConfigDirectVpcNetworkInterfaceArgs(
@@ -97,18 +122,23 @@ def create_download_stats_exporter_resources(
             secret_environment_variables=[
                 gcp.cloudfunctionsv2.FunctionServiceConfigSecretEnvironmentVariableArgs(
                     key='REDIS_PASSWORD',
-                    project_id=project,
-                    secret='redis-password',  # noqa:S106
+                    project_id=gcp_project,
+                    secret=redis_password_secret.secret_id,
                     version='latest',
                 ),
             ],
         ),
+        opts=ResourceOptions(
+        provider=gcp_provider,
+        depends_on=[redis_iam, redis_password_version],
+    ),
     )
 
     scheduler_sa = gcp.serviceaccount.Account(
         'stats-exporter-scheduler-sa',
         account_id=f'stats-scheduler-{stack}',
         display_name=f'IGV desktop proxy stats exporter scheduler ({stack})',
+        opts=gcp_opts,
     )
 
     # Allow Cloud Scheduler to invoke the Cloud Function
@@ -119,13 +149,15 @@ def create_download_stats_exporter_resources(
         cloud_function=cloud_function.name,
         role='roles/cloudfunctions.invoker',
         member=scheduler_sa.email.apply(lambda e: f'serviceAccount:{e}'),
+        opts=gcp_opts,
     )
 
     # Cloud Scheduler job — triggers the function daily at 20:00 UTC (06:00 AEST)
     gcp.cloudscheduler.Job(
         'stats-exporter-scheduler',
-        name=f'stats-exporter-scheduler-{stack}',
-        region=region,
+        name=f'igv-desktop-proxy-stats-exporter-scheduler-{stack}',
+        region=gcp_region,
+        opts=gcp_opts,
         description='Triggers daily download stats export from Redis to GCS',
         schedule='0 20 * * *',
         time_zone='UTC',
