@@ -49,7 +49,7 @@ def iter_stats_in_batches(redis_client: redis.Redis, date_str: str, batch_size: 
     for key in redis_client.scan_iter(match=pattern, count=batch_size):
         batch_keys.append(key)
         if len(batch_keys) >= batch_size:
-            values = redis_client.mget(batch_keys)
+            values = redis_client.mget(batch_keys)  # fetch values of these keys
             yield batch_keys, values
             batch_keys = []
 
@@ -84,14 +84,15 @@ def export_download_stats(_request: flask.Request) -> tuple[str, int]:
 
                 user_id, bucket, _date = _parse_stats_key(key)
                 writer.writerow([user_id, bucket, int(value)])
-                pipeline.expire(key, EXPIRE_AFTER_EXPORT_SECS)
+
+                pipeline.expire(key, EXPIRE_AFTER_EXPORT_SECS)  # expire these keys immediately
                 total_records += 1
 
             pipeline.execute()
 
     if total_records == 0:
         logging.info(f'No download stats found for {yesterday}')
-        blob.delete()
+        blob.delete()  # no entry created in GCS
         return 'No data to export.', 200
 
     logging.info(f'Exported download stat records. Count: {total_records}')
