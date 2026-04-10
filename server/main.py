@@ -86,7 +86,7 @@ async def proxy_handler(
     """Proxy requests to GCS."""
     bucket, object_path = validate_and_parse_path(full_path)
     headers = get_headers(request.headers)
-    print('hello there', request.method, full_path, request.headers)
+
     user_token = validate_auth(headers)
     range_header = headers.get('Range')
 

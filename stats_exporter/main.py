@@ -18,13 +18,18 @@ logging.basicConfig(
 STATS_KEY_PREFIX = 'dl_stats'
 EXPIRE_AFTER_EXPORT_SECS = 300  # 5 minutes
 DOWNLOAD_STATS_PREFIX = 'download-stats'
+REDIS_DEFAULT_CONFIGS = {
+    'host': 'localhost',
+    'port': '6379',
+}
 
 
 def _get_redis_client() -> redis.Redis:
-    host = os.environ['REDIS_HOST']
-    port = int(os.environ.get('REDIS_PORT', '6379'))
+    redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS.get('host'))
+    redis_port = int(os.environ.get('REDIS_PORT', REDIS_DEFAULT_CONFIGS.get('port')))
     password = os.environ.get('REDIS_PASSWORD')
-    url = f'redis://:{password}@{host}:{port}/0' if password else f'redis://{host}:{port}/0'
+
+    url = f'redis://:{password}@{redis_host}:{redis_port}/0' if password else f'redis://{redis_host}:{redis_port}/0'
     return redis.Redis.from_pool(redis.ConnectionPool.from_url(url=url, max_connections=5, decode_responses=True))
 
 
@@ -67,7 +72,7 @@ def export_download_stats(_request: flask.Request) -> tuple[str, int]:
     # Load all matching keys
     keys = _scan_stats_keys(redis_client, yesterday)
     if not keys:
-        logging.info('No download stats found for %s', yesterday)
+        logging.info(f'No download stats found for {yesterday}')
         return 'No data to export.', 200
 
     values = batch_get_values(redis_client, keys)
@@ -78,7 +83,7 @@ def export_download_stats(_request: flask.Request) -> tuple[str, int]:
         user_id, bucket, _date = _parse_stats_key(key)
         records.append({'user_id': user_id, 'bucket': bucket, 'bytes': int(value)})
 
-    logging.info(f'Loaded {len(records)} records for {yesterday}', len(records), yesterday)
+    logging.info(f'Loaded {len(records)} records for {yesterday}')
 
     # write the entries to GCS as a summary CSV
     year, month, day = yesterday.split('-')
@@ -101,4 +106,4 @@ def export_download_stats(_request: flask.Request) -> tuple[str, int]:
         pipeline.expire(key, EXPIRE_AFTER_EXPORT_SECS)
     pipeline.execute()
 
-    return f'Exported {len(records)} records to {gcs_object_name}.', 200
+    return f'Exported {len(records)} records.', 200

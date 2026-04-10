@@ -3,7 +3,6 @@ import os
 import pulumi
 import pulumi_gcp as gcp
 from pulumi import ResourceOptions
-
 from utils import get_file_content_hash
 
 
