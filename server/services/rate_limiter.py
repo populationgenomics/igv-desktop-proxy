@@ -30,7 +30,7 @@ class DownloadRateLimiter:
         self.http_client = http_client
 
         self.user_token = user_token
-        self.request_bytes = request_bytes  # bytes; IGV typically requests 512 KB per request
+        self.request_bytes = request_bytes  # bytes; IGV typically requests 512 KB per request (CRAM, BAM)
         self.user_sub: str | None = None
 
     async def check_user_limit(self) -> bool:

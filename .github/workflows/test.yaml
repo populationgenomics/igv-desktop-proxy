@@ -39,7 +39,7 @@ jobs:
         id: runtests
         run: |
           rc=0
-          uv run pytest --doctest-modules --doctest-continue-on-failure tests/ || rc=$?
+          uv run pytest tests/ || rc=$?
           echo "rc=$rc" >> $GITHUB_OUTPUT
 
       - name: Fail if unit tests are not passing

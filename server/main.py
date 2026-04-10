@@ -54,7 +54,7 @@ async def proxy_handler_metadata(
     full_path: str,
     httpx_client: httpx.AsyncClient = Depends(get_httpx_client),
 ):
-    """Proxy requests to GCS. Rate limit logics are not applied. Directly forward these requests to GCS."""
+    """Proxy requests to GCS. Rate limit logics are bypassed. Directly forward these requests to GCS."""
     bucket, object_path = validate_and_parse_path(full_path)
     headers = get_headers(request.headers)
 
@@ -86,7 +86,7 @@ async def proxy_handler(
     """Proxy requests to GCS."""
     bucket, object_path = validate_and_parse_path(full_path)
     headers = get_headers(request.headers)
-
+    print('hello there', request.method, full_path, request.headers)
     user_token = validate_auth(headers)
     range_header = headers.get('Range')
 
