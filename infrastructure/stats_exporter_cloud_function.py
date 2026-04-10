@@ -4,7 +4,7 @@ import pulumi
 import pulumi_gcp as gcp
 from pulumi import ResourceOptions
 
-from infrastructure.utils import get_file_content_hash
+from utils import get_file_content_hash
 
 
 def create_download_stats_exporter_resources(  # noqa: PLR0913
@@ -119,7 +119,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         service_config=gcp.cloudfunctionsv2.FunctionServiceConfigArgs(
             available_memory='512M',
             service_account_email=download_stats_exporter_sa.email,
-            ingress_settings='ALLOW_INTERNAL_AND_GCLB',
+            ingress_settings='ALLOW_INTERNAL_ONLY',
             direct_vpc_egress='VPC_EGRESS_PRIVATE_RANGES_ONLY',
             direct_vpc_network_interfaces=[
                 gcp.cloudfunctionsv2.FunctionServiceConfigDirectVpcNetworkInterfaceArgs(
@@ -152,12 +152,12 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
     )
 
     # Allow Cloud Scheduler to invoke the Cloud Function
-    gcp.cloudfunctionsv2.FunctionIamMember(
+    gcp.cloudrun.IamMember(
         'stats-export-scheduler-invoker',
         project=_gcp_project,
         location=_gcp_region,
-        cloud_function=cloud_function.name,
-        role='roles/cloudfunctions.invoker',
+        service=cloud_function.name,
+        role='roles/run.invoker',
         member=scheduler_sa.email.apply(lambda e: f'serviceAccount:{e}'),
         opts=gcp_opts,
     )
@@ -180,11 +180,11 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         ),
         http_target=gcp.cloudscheduler.JobHttpTargetArgs(
             # Invoke the cloud function by sending an HTTP POST request to the URL
-            uri=cloud_function.url,
+            uri=cloud_function.service_config.uri,
             http_method='POST',
             oidc_token=gcp.cloudscheduler.JobHttpTargetOidcTokenArgs(
                 service_account_email=scheduler_sa.email,
-                audience=cloud_function.url,
+                audience=cloud_function.service_config.uri,
             ),
         ),
     )
