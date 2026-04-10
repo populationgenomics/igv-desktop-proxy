@@ -70,6 +70,7 @@ async def test_rate_limit_not_applied_for_cram_index_file_if_range_not_specified
     )
     assert result is None
 
+
 @pytest.mark.asyncio
 async def test_rate_limit_not_applied_for_bam_index_file_if_range_not_specified(
     mock_httpx_client: httpx.AsyncClient,
@@ -84,7 +85,6 @@ async def test_rate_limit_not_applied_for_bam_index_file_if_range_not_specified(
         redis_client=mock_redis_client,
     )
     assert result is None
-
 
 
 @pytest.mark.asyncio
@@ -103,9 +103,16 @@ async def test_raise_error_when_range_not_specified_for_non_index_files(
         )
     assert exc.value.status_code == HTTPStatus.BAD_REQUEST
 
+
 @pytest.mark.asyncio
-async def test_successfully_apply_rate_limit_for_index_file(mock_httpx_client: httpx.AsyncClient, mock_redis_client: AsyncMock):
-    """Test successfully check user limits and allow proceeding if quota not exceeded when requesting index file (range header included)."""
+async def test_successfully_apply_rate_limit_for_index_file(
+    mock_httpx_client: httpx.AsyncClient,
+    mock_redis_client: AsyncMock,
+):
+    """Test successfully check user limits for index file.
+
+    Allow if quota not exceeded when requesting index file (range header included).
+    """
     with patch(
         'server.services.rate_limiter.DownloadRateLimiter.check_user_limit',
         new_callable=AsyncMock,
