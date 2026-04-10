@@ -4,6 +4,8 @@ import pulumi
 import pulumi_gcp as gcp
 from pulumi import ResourceOptions
 
+from infrastructure.utils import get_file_content_hash
+
 
 def create_download_stats_exporter_resources(  # noqa: PLR0913
     stack: str,
@@ -75,12 +77,15 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         opts=gcp_opts,
     )
 
+    source_path = '../stats_exporter/source.zip'
+    file_hash = get_file_content_hash(source_path)  # update sources if there are any changes
+
     # Upload the cloud_function source files to its respective bucket
     cloud_function_source = gcp.storage.BucketObject(
         'stats-exporter-cloud-function-source',
         bucket=source_bucket.name,
-        name='source.zip',
-        source=pulumi.FileAsset('../stats_exporter/source.zip'),
+        name=f'source.{file_hash[:16]}.zip',
+        source=pulumi.FileAsset(source_path),
         opts=gcp_opts,
     )
 
