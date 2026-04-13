@@ -11,6 +11,8 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
     redis_instance: gcp.redis.Instance,
     redis_password_secret: gcp.secretmanager.Secret,
     redis_password_version: gcp.secretmanager.SecretVersion,
+    redis_ca_cert_secret: gcp.secretmanager.Secret,
+    redis_ca_cert_version: gcp.secretmanager.SecretVersion,
     network: gcp.compute.Network,
     subnetwork: gcp.compute.Subnetwork,
     gcp_provider: gcp.Provider,
@@ -52,7 +54,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
     gcp.storage.BucketIAMMember(
         'download-stats-exporter-gcs-writer',
         bucket=download_stats_archive_bucket.name,
-        role='roles/storage.objectCreator',
+        role='roles/storage.objectUser',
         member=download_stats_exporter_sa.email.apply(lambda e: f'serviceAccount:{e}'),
         opts=gcp_opts,
     )
@@ -62,6 +64,16 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         'download-stats-exporter-redis-secret-accessor',
         project=_gcp_project,
         secret_id=redis_password_secret.secret_id,
+        role='roles/secretmanager.secretAccessor',
+        member=download_stats_exporter_sa.email.apply(lambda e: f'serviceAccount:{e}'),
+        opts=gcp_opts,
+    )
+
+    # Allow the service account to read the Redis cert secret
+    gcp.secretmanager.SecretIamMember(
+        'download-stats-exporter-redis-cert-accessor',
+        project=_gcp_project,
+        secret_id=redis_ca_cert_secret.secret_id,
         role='roles/secretmanager.secretAccessor',
         member=download_stats_exporter_sa.email.apply(lambda e: f'serviceAccount:{e}'),
         opts=gcp_opts,
@@ -97,6 +109,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
             'REDIS_HOST': args['host'],
             'REDIS_PORT': args['port'],
             'GCS_STATS_BUCKET': _stats_archive_bucket,
+            'REDIS_CERT_PATH': '/etc/secrets/redis/redis_ca.crt',
         },
     )
 
@@ -135,10 +148,23 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
                     version='latest',
                 ),
             ],
+            secret_volumes=[
+                gcp.cloudfunctionsv2.FunctionServiceConfigSecretVolumeArgs(
+                    mount_path='/etc/secrets/redis',
+                    project_id=_gcp_project,
+                    secret=redis_ca_cert_secret.secret_id,
+                    versions=[
+                        gcp.cloudfunctionsv2.FunctionServiceConfigSecretVolumeVersionArgs(
+                            version='latest',
+                            path='redis_ca.crt',
+                        ),
+                    ],
+                ),
+            ],
         ),
         opts=ResourceOptions(
             provider=gcp_provider,
-            depends_on=[redis_iam, redis_password_version],
+            depends_on=[redis_iam, redis_password_version, redis_ca_cert_version],
         ),
     )
 

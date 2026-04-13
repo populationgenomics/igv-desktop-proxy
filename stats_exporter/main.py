@@ -1,5 +1,4 @@
 import csv
-import logging
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -7,12 +6,6 @@ import flask
 import functions_framework
 import redis
 from google.cloud import storage
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-)
 
 STATS_KEY_PREFIX = 'dl_stats'
 EXPIRE_AFTER_EXPORT_SECS = 300  # 5 minutes
@@ -26,10 +19,25 @@ REDIS_DEFAULT_CONFIGS = {
 def _get_redis_client() -> redis.Redis:
     redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS.get('host'))
     redis_port = int(os.environ.get('REDIS_PORT', REDIS_DEFAULT_CONFIGS.get('port')))
-    password = os.environ.get('REDIS_PASSWORD')
+    redis_password = os.environ.get('REDIS_PASSWORD')
+    redis_cert_path = os.environ.get('REDIS_CERT_PATH')
 
-    url = f'redis://:{password}@{redis_host}:{redis_port}/0' if password else f'redis://{redis_host}:{redis_port}/0'
-    return redis.Redis.from_pool(redis.ConnectionPool.from_url(url=url, max_connections=5, decode_responses=True))
+    scheme = 'rediss' if redis_cert_path else 'redis'
+    if redis_password:
+        url = f'{scheme}://:{redis_password}@{redis_host}:{redis_port}/0'
+    else:
+        url = f'{scheme}://{redis_host}:{redis_port}/0'
+
+    kwargs = {
+        'url': url,
+        'max_connections': 5,
+        'decode_responses': True,
+    }
+
+    if redis_cert_path:
+        kwargs['ssl_ca_certs'] = redis_cert_path
+
+    return redis.Redis.from_pool(redis.ConnectionPool.from_url(**kwargs))
 
 
 def _parse_stats_key(key: str) -> tuple[str, str, str]:
@@ -91,9 +99,9 @@ def export_download_stats(_request: flask.Request) -> tuple[str, int]:
             pipeline.execute()
 
     if total_records == 0:
-        logging.info(f'No download stats found for {yesterday}')
+        print(f'No download stats found for {yesterday}')
         blob.delete()  # no entry created in GCS
         return 'No data to export.', 200
 
-    logging.info(f'Exported download stat records. Count: {total_records}')
+    print(f'Exported download stat records. Count: {total_records}')
     return f'Exported {total_records} records.', 200

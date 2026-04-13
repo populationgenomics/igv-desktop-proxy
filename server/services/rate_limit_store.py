@@ -4,6 +4,7 @@ from uuid import UUID
 import redis.asyncio as redis
 
 from server.resources.deduct_from_budget_lua_script import DEDUCT_LUA_SCRIPT
+from server.resources.increment_stats_lua_script import INCREMENT_STATS_LUA_SCRIPT
 from server.resources.refund_to_budget_lua_script import REFUND_LUA_SCRIPT
 from server.resources.release_lock_lua_script import RELEASE_LOCK_LUA_SCRIPT
 from server.utils.constants import CAPPED_TIME_WINDOW_SECS, DOWNLOAD_CAP_BYTES, STATS_KEY_TTL_SECS
@@ -13,11 +14,12 @@ class RateLimitRedisClient:
     """Redis client wrapper with Lua scripts."""
 
     def __init__(self, client: redis.Redis) -> None:
-        """Initialize the client."""
+        """Initialize the client and register LUA scripts."""
         self._client = client
         self._check_available_limit = client.register_script(DEDUCT_LUA_SCRIPT)
         self._refund_on_fail = client.register_script(REFUND_LUA_SCRIPT)
         self._release_lock = client.register_script(RELEASE_LOCK_LUA_SCRIPT)
+        self._increment_stats = client.register_script(INCREMENT_STATS_LUA_SCRIPT)
 
     async def deduct_if_balance(self, user_sub: str, request_bytes: int, now: float) -> int:
         """Deduct request_range bytes from users download budget if sufficient download quota is available.
@@ -51,8 +53,10 @@ class RateLimitRedisClient:
 
         Sets a 49-hour TTL on first write.
         """
-        await self._client.incrby(stats_key, bytes_count)
-        await self._client.expire(stats_key, STATS_KEY_TTL_SECS, nx=True)
+        await self._increment_stats(
+            keys=[stats_key],
+            args=[bytes_count, STATS_KEY_TTL_SECS],
+        )
 
     async def aclose(self) -> None:
         """Close the Redis connection and removes local script references."""
@@ -62,6 +66,7 @@ class RateLimitRedisClient:
             self._check_available_limit = None
             self._refund_on_fail = None
             self._release_lock = None
+            self._increment_stats = None
 
     def __getattr__(self, name: str) -> Any:
         """Proxy all other redis.Redis methods (get, set, delete, aclose, …) transparently."""
