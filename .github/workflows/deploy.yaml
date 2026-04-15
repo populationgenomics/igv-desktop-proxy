@@ -78,6 +78,8 @@ jobs:
           PULUMI_CONFIG_GCP_PROJECT: ${{ secrets.PULUMI_CONFIG_GCP_PROJECT }}
           PULUMI_CONFIG_APP_DOMAIN: ${{ secrets.PULUMI_CONFIG_APP_DOMAIN }}
           PULUMI_CONFIG_SECURITY_POLICY_STACK: ${{ vars.PULUMI_CONFIG_PRIVATE_CONFIG_STACK }}
+          APP_CONFIG_STATS_ARCHIVE_BUCKET: ${{ vars.APP_CONFIG_STATS_ARCHIVE_BUCKET }}
+          APP_CONFIG_CLOUD_FUNCTION_SOURCE_BUCKET: ${{ vars.APP_CONFIG_CLOUD_FUNCTION_SOURCE_BUCKET }}
 
           # skip checkpointing to speed-up the workflow, and avoid lots of saved state jsons
           PULUMI_SKIP_CHECKPOINTS: true
