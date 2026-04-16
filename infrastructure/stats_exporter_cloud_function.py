@@ -241,6 +241,10 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         'schedulerExhaustedRetriesAlert',
         display_name='IGV Desktop Proxy dev Alert: Backup job failed',
         combiner='OR',
+        alert_strategy=gcp.monitoring.AlertPolicyAlertStrategyArgs(
+            # Notify on creation. Suppresses the automatic 'CLOSED' notification after time window expires
+            notification_prompts=['OPENED'],
+        ),
         conditions=[
             gcp.monitoring.AlertPolicyConditionArgs(
                 display_name='Backup job failed after all Retries',
