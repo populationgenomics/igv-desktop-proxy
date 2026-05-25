@@ -23,7 +23,7 @@ TOKEN_HASH_PREFIX = 'token_hash'  # noqa: S105
 
 REDIS_DEFAULT_CONFIGS = {
     'host': 'localhost',
-    'port': '6379',
+    'port': 6379,
 }
 
 FASTAPI_DEFAULT_CONFIGS = {
