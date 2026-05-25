@@ -15,7 +15,7 @@ def get_httpx_client(request: Request) -> httpx.AsyncClient:
     return request.app.state.httpx_client
 
 
-async def get_redis_client(request: Request) -> RateLimitRedisClient:
+def get_redis_client(request: Request) -> RateLimitRedisClient:
     """Retrieve the shared RateLimitRedisClient instance."""
     if request.app.state.redis_client is None:
         raise RuntimeError('Redis client not initialized.')

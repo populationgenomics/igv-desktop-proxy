@@ -14,13 +14,13 @@ class RateLimitRedisClient:
         """Initialize the client."""
         self._client = client
         resources_path = Path(__file__).parent.parent / 'resources'
-        self._check_available_limit = client.register_script(
+        self._check_available_limit = self._client.register_script(
             (resources_path / 'deduct_from_budget.lua').read_text(),
         )
-        self._refund_on_fail = client.register_script(
+        self._refund_on_fail = self._client.register_script(
             (resources_path / 'refund_to_budget.lua').read_text(),
         )
-        self._release_lock = client.register_script(
+        self._release_lock = self._client.register_script(
             (resources_path / 'release_lock.lua').read_text(),
         )
 
