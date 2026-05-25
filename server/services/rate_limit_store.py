@@ -61,5 +61,5 @@ class RateLimitRedisClient:
             self._release_lock = None
 
     def __getattr__(self, name: str) -> Any:
-        """Proxy all other redis.Redis methods (get, set, delete, aclose, …) transparently."""
+        """Proxy all other redis.Redis methods (get, set, delete) transparently."""
         return getattr(self._client, name)
