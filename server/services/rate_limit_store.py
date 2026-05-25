@@ -1,11 +1,9 @@
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import redis.asyncio as redis
 
-from server.resources.deduct_from_budget_lua_script import DEDUCT_LUA_SCRIPT
-from server.resources.refund_to_budget_lua_script import REFUND_LUA_SCRIPT
-from server.resources.release_lock_lua_script import RELEASE_LOCK_LUA_SCRIPT
 from server.utils.constants import CAPPED_TIME_WINDOW_SECS, DOWNLOAD_CAP_BYTES
 
 
@@ -15,9 +13,16 @@ class RateLimitRedisClient:
     def __init__(self, client: redis.Redis) -> None:
         """Initialize the client."""
         self._client = client
-        self._check_available_limit = client.register_script(DEDUCT_LUA_SCRIPT)
-        self._refund_on_fail = client.register_script(REFUND_LUA_SCRIPT)
-        self._release_lock = client.register_script(RELEASE_LOCK_LUA_SCRIPT)
+        resources_path = Path(__file__).parent.parent / 'resources'
+        self._check_available_limit = client.register_script(
+            (resources_path / 'deduct_from_budget.lua').read_text(),
+        )
+        self._refund_on_fail = client.register_script(
+            (resources_path / 'refund_to_budget.lua').read_text(),
+        )
+        self._release_lock = client.register_script(
+            (resources_path / 'release_lock.lua').read_text(),
+        )
 
     async def deduct_if_balance(self, user_sub: str, request_bytes: int, now: float) -> int:
         """Deduct request_range bytes from users download budget if sufficient download quota is available.
