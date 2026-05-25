@@ -29,7 +29,8 @@ def create_redis_pool() -> redis.ConnectionPool:
     https://redis.readthedocs.io/en/stable/examples/asyncio_examples.html
     """
     redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS.get('host'))
-    redis_port = int(os.environ.get('REDIS_PORT', REDIS_DEFAULT_CONFIGS.get('port')))
+    env_port = os.environ.get('REDIS_PORT')
+    redis_port = int(env_port) if env_port else REDIS_DEFAULT_CONFIGS.get('port')
 
     url = f'redis://{redis_host}:{redis_port}/0'
 
