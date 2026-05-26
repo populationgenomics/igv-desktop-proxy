@@ -187,8 +187,8 @@ cloud_run = gcp.cloudrunv2.Service(
                 image=image.repo_digest,
                 resources=gcp.cloudrunv2.ServiceTemplateContainerResourcesArgs(
                     limits={
-                        'memory': '4Gi',
-                        'cpu': '2',
+                        'memory': '2Gi' if stack == 'dev' else '4Gi',
+                        'cpu': '1' if stack == 'dev' else '2',
                     },
                     startup_cpu_boost=True,  # Allocate extra CPU during startup to improve cold start times
                 ),

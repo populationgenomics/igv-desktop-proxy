@@ -188,7 +188,8 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
     )
 
     # Cloud Scheduler job — triggers the function daily at 20:00 UTC (06:00 AEST)
-    gcp.cloudscheduler.Job(
+    max_retries = 3
+    scheduler_job = gcp.cloudscheduler.Job(
         'download-stats-export-scheduler',
         name=f'igv-desktop-proxy-dowload-stats-export-scheduler-{stack}',
         region=_gcp_region,
@@ -198,7 +199,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         time_zone='UTC',
         attempt_deadline='600s',  # wait up to for the cloud function to finish
         retry_config=gcp.cloudscheduler.JobRetryConfigArgs(
-            retry_count=3,
+            retry_count=max_retries,
             min_backoff_duration='60s',  # wait at least 60 seconds before firing the first
             max_backoff_duration='3600s',  # maximum time it will wait between retries
             max_retry_duration='0s',
@@ -213,3 +214,65 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
             ),
         ),
     )
+
+    ## Alert if back up scheduler failure
+    slack_channel_id = os.environ.get(
+        'APP_CONFIG_SLACK_CHANNEL_ID',
+    )
+    if slack_channel_id is None:
+        raise ValueError('APP_CONFIG_SLACK_CHANNEL_ID environment variable not set')
+
+    scheduler_error_metric = gcp.logging.Metric(
+        'schedulerErrorMetric',
+        name='scheduler_job_failures',
+        filter=pulumi.Output.format(
+            'resource.type="cloud_scheduler_job" AND resource.labels.job_id="{0}" AND severity>=ERROR',
+            scheduler_job.name,
+        ),
+        metric_descriptor=gcp.logging.MetricMetricDescriptorArgs(
+            metric_kind='DELTA',
+            value_type='INT64',
+        ),
+        description='Counts the number of errors for the daily scheduled job.',
+        opts=gcp_opts,
+    )
+
+    cloud_scheduler_alert_policy = gcp.monitoring.AlertPolicy(
+        'schedulerExhaustedRetriesAlert',
+        display_name='IGV Desktop Proxy dev Alert: Backup job failed',
+        combiner='OR',
+        alert_strategy=gcp.monitoring.AlertPolicyAlertStrategyArgs(
+            # Notify on creation. Suppresses the automatic 'CLOSED' notification after time window expires
+            notification_prompts=['OPENED'],
+        ),
+        conditions=[
+            gcp.monitoring.AlertPolicyConditionArgs(
+                display_name='Backup job failed after all Retries',
+                condition_threshold=gcp.monitoring.AlertPolicyConditionConditionThresholdArgs(
+                    filter=scheduler_error_metric.name.apply(
+                        lambda name: (
+                            f'metric.type="logging.googleapis.com/user/{name}" AND resource.type="cloud_scheduler_job"'
+                        ),
+                    ),
+                    comparison='COMPARISON_GT',
+                    threshold_value=max_retries,
+                    duration='0s',
+                    aggregations=[
+                        gcp.monitoring.AlertPolicyConditionConditionThresholdAggregationArgs(
+                            alignment_period='3900s',
+                            per_series_aligner='ALIGN_SUM',  # Sums up all errors in the 1h5m window
+                            cross_series_reducer='REDUCE_SUM',
+                        ),
+                    ],
+                ),
+            ),
+        ],
+        notification_channels=[slack_channel_id],
+        documentation=gcp.monitoring.AlertPolicyDocumentationArgs(
+            content=f'IGV Desktop Proxy-{stack}:The Daily download stat backup job has failed.',
+            mime_type='text/markdown',
+        ),
+        opts=gcp_opts,
+    )
+
+    pulumi.export('alert_policy_cloud_scheduler_name', cloud_scheduler_alert_policy.name)
