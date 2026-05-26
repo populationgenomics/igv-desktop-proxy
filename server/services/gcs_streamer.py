@@ -57,9 +57,8 @@ class GCSStreamer:
 
         except Exception as exc:
             if self.rate_limiter is not None:
-                await (
-                    self.rate_limiter.refund()
-                )  # refund the requested_bytes back to the user's download quota as the request to GCS failed
+                # refund the requested_bytes back to the user's download quota as the request to GCS failed
+                await self.rate_limiter.refund()
 
             if isinstance(exc, httpx.HTTPStatusError):
                 await exc.response.aread()

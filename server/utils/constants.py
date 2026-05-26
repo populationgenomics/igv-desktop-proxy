@@ -24,7 +24,7 @@ STATS_KEY_TTL_SECS = 176400  # 49 hours (safety net TTL)
 
 REDIS_DEFAULT_CONFIGS = {
     'host': 'localhost',
-    'port': '6379',
+    'port': 6379,
 }
 
 FASTAPI_DEFAULT_CONFIGS = {

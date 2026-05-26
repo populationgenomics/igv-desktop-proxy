@@ -119,6 +119,6 @@ if __name__ == '__main__':
 
     uvicorn.run(
         'server.main:app',
-        host=FASTAPI_DEFAULT_CONFIGS.get('host'),
-        port=FASTAPI_DEFAULT_CONFIGS.get('port'),
+        host=FASTAPI_DEFAULT_CONFIGS['host'],
+        port=FASTAPI_DEFAULT_CONFIGS['port'],
     )
