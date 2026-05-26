@@ -12,13 +12,14 @@ EXPIRE_AFTER_EXPORT_SECS = 300  # 5 minutes
 DOWNLOAD_STATS_PREFIX = 'download-stats'
 REDIS_DEFAULT_CONFIGS = {
     'host': 'localhost',
-    'port': '6379',
+    'port': 6379,
 }
 
 
 def _get_redis_client() -> redis.Redis:
-    redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS.get('host'))
-    redis_port = int(os.environ.get('REDIS_PORT', REDIS_DEFAULT_CONFIGS.get('port')))
+    redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS['host'])
+    env_port = os.environ.get('REDIS_PORT')
+    redis_port = int(env_port) if env_port else REDIS_DEFAULT_CONFIGS['port']
     redis_password = os.environ.get('REDIS_PASSWORD')
     redis_cert_path = os.environ.get('REDIS_CERT_PATH')
 

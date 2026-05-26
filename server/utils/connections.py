@@ -28,9 +28,9 @@ def create_redis_pool() -> redis.ConnectionPool:
     Redis pool is created to handle a single redis instance:
     https://redis.readthedocs.io/en/stable/examples/asyncio_examples.html
     """
-    redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS.get('host'))
+    redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS['host'])
     env_port = os.environ.get('REDIS_PORT')
-    redis_port = int(env_port) if env_port else REDIS_DEFAULT_CONFIGS.get('port')
+    redis_port = int(env_port) if env_port else REDIS_DEFAULT_CONFIGS['port']
     redis_password = os.environ.get('REDIS_PASSWORD')
     redis_cert_path = os.environ.get('REDIS_CERT_PATH')
 
