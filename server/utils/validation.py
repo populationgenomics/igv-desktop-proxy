@@ -57,7 +57,7 @@ async def rate_limit_if_applicable(
     if is_index_file:
         return None
 
-    if range_header is None:  # range header specified for non-index files
+    if range_header is None:  # range header is expected for non-index files
         raise HTTPException(HTTPStatus.BAD_REQUEST)
 
     if range_header == FIRST_BYTE_RANGE:

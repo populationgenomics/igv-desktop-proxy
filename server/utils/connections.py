@@ -15,7 +15,7 @@ def get_httpx_client(request: Request) -> httpx.AsyncClient:
     return request.app.state.httpx_client
 
 
-async def get_redis_client(request: Request) -> RateLimitRedisClient:
+def get_redis_client(request: Request) -> RateLimitRedisClient:
     """Retrieve the shared RateLimitRedisClient instance."""
     if request.app.state.redis_client is None:
         raise RuntimeError('Redis client not initialized.')
@@ -29,7 +29,8 @@ def create_redis_pool() -> redis.ConnectionPool:
     https://redis.readthedocs.io/en/stable/examples/asyncio_examples.html
     """
     redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS.get('host'))
-    redis_port = int(os.environ.get('REDIS_PORT', REDIS_DEFAULT_CONFIGS.get('port')))
+    env_port = os.environ.get('REDIS_PORT')
+    redis_port = int(env_port) if env_port else REDIS_DEFAULT_CONFIGS.get('port')
 
     url = f'redis://{redis_host}:{redis_port}/0'
 

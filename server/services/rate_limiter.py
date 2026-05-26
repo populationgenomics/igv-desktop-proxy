@@ -11,7 +11,7 @@ from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponentia
 
 from server.services.rate_limit_store import RateLimitRedisClient
 from server.utils.constants import CPG_HOSTED_DOMAIN, LOCK_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
-from server.utils.helpers import format_redis_key, is_none
+from server.utils.helpers import is_none
 
 
 class DownloadRateLimiter:
@@ -52,12 +52,12 @@ class DownloadRateLimiter:
     async def get_authenticated_user_id(self, token_hash: str) -> str | None:
         """Check cache or external service to validate the user access token."""
         # Already cached.
-        token_key = format_redis_key(TOKEN_HASH_PREFIX, token_hash)
+        token_key = f'{TOKEN_HASH_PREFIX}:{token_hash}'
         user_sub = await self.redis_client.get(token_key)
         if user_sub is not None:
             return user_sub
 
-        lock_key = format_redis_key(LOCK_PREFIX, token_hash)
+        lock_key = f'{LOCK_PREFIX}:{token_hash}'
 
         # Try to acquire the lock
         # Only one request is allowed to invoke userinfo endpoint if there are concurrent requests with the same token
@@ -107,7 +107,7 @@ class DownloadRateLimiter:
         now = time.time()
 
         assert self.user_sub is not None
-        sub_key = format_redis_key(SUB_PREFIX, self.user_sub)
+        sub_key = f'{SUB_PREFIX}:{self.user_sub}'
         remaining_bytes = await self.redis_client.deduct_if_balance(sub_key, self.request_bytes, now)
 
         return remaining_bytes >= 0
@@ -119,5 +119,5 @@ class DownloadRateLimiter:
 
         now = time.time()
         assert self.user_sub is not None
-        key = format_redis_key(SUB_PREFIX, self.user_sub)
+        key = f'{SUB_PREFIX}:{self.user_sub}'
         await self.redis_client.refund(key, self.request_bytes, now)
