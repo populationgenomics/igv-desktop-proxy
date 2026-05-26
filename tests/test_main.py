@@ -1,0 +1,52 @@
+from http import HTTPStatus
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from fastapi import Response
+from pytest_asyncio import fixture
+from starlette.testclient import TestClient
+
+
+class TestMainAPI:
+    """Test desktop proxy API endpoints."""
+
+    @fixture(autouse=True)
+    def set_up(self, mock_proxy_api: TestClient):
+        """Set up the test client."""
+        self.proxy_api = mock_proxy_api
+
+    def test_health_check(self):
+        """Test health check endpoint."""
+        response = self.proxy_api.get('/health')
+        assert response.status_code == HTTPStatus.OK
+        assert 'OK' in response.text
+
+    @patch('server.main.GCSStreamer')
+    def test_proxy_success_index_file(self, mock_gcs_streamer_cls: MagicMock):
+        """Test return success when requesting data from index file."""
+        mock_gcs_streamer_cls.return_value.stream_from_gcs = AsyncMock(
+            return_value=Response(status_code=HTTPStatus.OK, content=b'fake data'),
+        )
+
+        headers = {'Authorization': 'Bearer token123'}
+        response = self.proxy_api.get('/mybucket/path/to/file.cram.crai', headers=headers)
+
+        assert response.status_code == HTTPStatus.OK
+        assert response.content == b'fake data'
+
+    @patch('server.main.rate_limit_if_applicable')
+    @patch('server.main.GCSStreamer')
+    def test_proxy_success_with_range_limit(self, mock_gcs_streamer_cls: MagicMock, mock_rate_limit_fn: MagicMock):
+        """Test return success when requesting data from non-index file."""
+        mock_gcs_streamer_cls.return_value.stream_from_gcs = AsyncMock(
+            return_value=Response(status_code=HTTPStatus.PARTIAL_CONTENT, content=b'partial data'),
+        )
+        mock_rate_limit_fn.return_value = None
+
+        headers = {
+            'Authorization': 'Bearer token123',
+            'Range': 'bytes=0-1024',
+        }
+        response = self.proxy_api.get('/mybucket/path/to/file.cram', headers=headers)
+
+        assert response.status_code == HTTPStatus.PARTIAL_CONTENT
+        assert response.content == b'partial data'

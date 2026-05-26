@@ -26,7 +26,16 @@ This project uses [`uv`](https://docs.astral.sh/uv/) for fast Python dependency 
     uv sync
     ```
 
-3. **Run the local server**:
+3. **Configure redis instance locally**:
+
+    ```bash
+    docker pull redis:7.2
+    docker run --name igv-dsk-proxy-test -d -p 6379:6379 redis:7.2
+    ```
+
+    To visualize redis data - checkout [Redis insights](https://redis.io/docs/latest/operate/redisinsight/install/install-on-docker/)
+
+4. **Run the local server**:
 
     ```bash
     uv run uvicorn --port 8080 --host localhost server.main:app

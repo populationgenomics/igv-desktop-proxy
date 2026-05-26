@@ -5,6 +5,7 @@ import pulumi_docker as docker
 import pulumi_gcp as gcp
 from pulumi import ResourceOptions, get_stack
 from pulumi_docker import BuilderVersion
+from stats_exporter_cloud_function import create_download_stats_exporter_resources
 
 stack = get_stack()
 
@@ -59,10 +60,96 @@ service_account = gcp.serviceaccount.Account(
     opts=gcp_opts,
 )
 
+# creating vpc for redis connection
+network = gcp.compute.Network(
+    'igv-desktop-proxy-network',
+    name=f'igv-proxy-network-{stack}',
+    auto_create_subnetworks=False,
+    opts=gcp_opts,
+)
+
+subnetwork = gcp.compute.Subnetwork(
+    'igv-desktop-proxy-subnetwork',
+    name=f'igv-proxy-subnetwork-{stack}',
+    ip_cidr_range='10.0.0.0/24',
+    region=_gcp_region,
+    network=network.id,
+    opts=gcp_opts,
+)
+
+redis_instance = gcp.redis.Instance(
+    'igv-desktop-proxy-redis',
+    name=f'igv-proxy-redis-{stack}',
+    memory_size_gb=1,
+    tier='BASIC',
+    redis_version='REDIS_7_2',
+    region=_gcp_region,
+    authorized_network=network.id,
+    auth_enabled=True,
+    transit_encryption_mode='SERVER_AUTHENTICATION',
+    opts=gcp_opts,
+)
+
+# Store Redis password in Secret Manager
+redis_password_secret = gcp.secretmanager.Secret(
+    'redis-password',
+    secret_id='redis-password',  # noqa:S106
+    replication=gcp.secretmanager.SecretReplicationArgs(
+        auto=gcp.secretmanager.SecretReplicationAutoArgs(),
+    ),
+    opts=gcp_opts,
+)
+
+redis_password_version = gcp.secretmanager.SecretVersion(
+    'redis-password-version',
+    secret=redis_password_secret.id,
+    secret_data=redis_instance.auth_string,
+    opts=gcp_opts,
+)
+
+# provide secret manager access to cloud run service account
+redis_iam = gcp.secretmanager.SecretIamMember(
+    'igv-desktop-proxy-redis-secret-accessor',
+    project=_gcp_project,
+    secret_id=redis_password_secret.secret_id,
+    role='roles/secretmanager.secretAccessor',
+    member=service_account.email.apply(lambda e: f'serviceAccount:{e}'),
+    opts=gcp_opts,
+)
+
+# Store Redis CA Certificate in Secret Manager
+redis_ca_cert_secret = gcp.secretmanager.Secret(
+    'redis-ca-cert',
+    secret_id=f'redis-ca-cert-{stack}',
+    replication=gcp.secretmanager.SecretReplicationArgs(
+        auto=gcp.secretmanager.SecretReplicationAutoArgs(),
+    ),
+    opts=gcp_opts,
+)
+
+redis_ca_cert_version = gcp.secretmanager.SecretVersion(
+    'redis-ca-cert-version',
+    secret=redis_ca_cert_secret.id,
+    secret_data=redis_instance.server_ca_certs.apply(
+        lambda certs: certs[0]['cert'] if certs else '',
+    ),
+    opts=gcp_opts,
+)
+
+# provide secret manager access to cloud run service account
+gcp.secretmanager.SecretIamMember(
+    'igv-desktop-proxy-redis-cert-accessor',
+    project=_gcp_project,
+    secret_id=redis_ca_cert_secret.secret_id,
+    role='roles/secretmanager.secretAccessor',
+    member=service_account.email.apply(lambda e: f'serviceAccount:{e}'),
+    opts=gcp_opts,
+)
+
 cloud_run = gcp.cloudrunv2.Service(
     'igv-desktop-proxy',
     name=f'igv-desktop-proxy-{stack}',
-    ingress='INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER',
+    ingress='INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER',  # accepts traffic only from the ALB
     location=_gcp_region,
     default_uri_disabled=True,
     template=gcp.cloudrunv2.ServiceTemplateArgs(
@@ -72,17 +159,68 @@ cloud_run = gcp.cloudrunv2.Service(
             min_instance_count=0,
             max_instance_count=10,
         ),
+        vpc_access=gcp.cloudrunv2.ServiceTemplateVpcAccessArgs(  # configure connection to the redis instance
+            network_interfaces=[
+                gcp.cloudrunv2.ServiceTemplateVpcAccessNetworkInterfaceArgs(
+                    network=network.id,
+                    subnetwork=subnetwork.id,
+                ),
+            ],
+            egress='PRIVATE_RANGES_ONLY',
+        ),
+        volumes=[
+            gcp.cloudrunv2.ServiceTemplateVolumeArgs(
+                name='redis-ca-cert-volume',
+                secret=gcp.cloudrunv2.ServiceTemplateVolumeSecretArgs(
+                    secret=redis_ca_cert_secret.secret_id,
+                    items=[
+                        gcp.cloudrunv2.ServiceTemplateVolumeSecretItemArgs(
+                            version='latest',
+                            path='redis_ca.crt',
+                        ),
+                    ],
+                ),
+            ),
+        ],
         containers=[
             gcp.cloudrunv2.ServiceTemplateContainerArgs(
                 image=image.repo_digest,
                 resources=gcp.cloudrunv2.ServiceTemplateContainerResourcesArgs(
                     limits={
-                        'memory': '4Gi',
-                        'cpu': '2',
+                        'memory': '2Gi' if stack == 'dev' else '4Gi',
+                        'cpu': '1' if stack == 'dev' else '2',
                     },
                     startup_cpu_boost=True,  # Allocate extra CPU during startup to improve cold start times
                 ),
-                envs=[],
+                volume_mounts=[
+                    gcp.cloudrunv2.ServiceTemplateContainerVolumeMountArgs(
+                        name='redis-ca-cert-volume',
+                        mount_path='/etc/secrets/redis',
+                    ),
+                ],
+                envs=[
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+                        name='REDIS_HOST',
+                        value=redis_instance.host,
+                    ),
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+                        name='REDIS_PORT',
+                        value=redis_instance.port.apply(lambda p: str(p)),
+                    ),
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+                        name='REDIS_PASSWORD',
+                        value_source=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceArgs(
+                            secret_key_ref=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceSecretKeyRefArgs(
+                                secret=redis_password_secret.secret_id,
+                                version='latest',
+                            ),
+                        ),
+                    ),
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+                        name='REDIS_CERT_PATH',
+                        value='/etc/secrets/redis/redis_ca.crt',
+                    ),
+                ],
                 ports=gcp.cloudrunv2.ServiceTemplateContainerPortsArgs(
                     name='http1',
                     container_port=8080,
@@ -90,10 +228,13 @@ cloud_run = gcp.cloudrunv2.Service(
             ),
         ],
     ),
-    opts=gcp_opts,
+    opts=ResourceOptions(
+        provider=gcp_provider,
+        depends_on=[redis_iam, redis_password_version],
+    ),
 )
 
-# Allow cloud run unauthenticated access
+# Allow all users access to cloud run service
 gcp.cloudrunv2.ServiceIamMember(
     'igv-desktop-proxy-public-access-binding',
     project=cloud_run.project,
@@ -115,6 +256,7 @@ neg = gcp.compute.RegionNetworkEndpointGroup(
     opts=gcp_opts,
 )
 
+# integrate with cloud armor
 private_stack = pulumi.StackReference(_private_config_stack)
 security_policy_id = private_stack.get_output('security_policy_id')
 
@@ -171,3 +313,16 @@ gcp.compute.GlobalForwardingRule(
 
 
 pulumi.export('load balancer ip', ip_address.address)
+
+# create cloud run function to export download stats
+create_download_stats_exporter_resources(
+    stack=stack,
+    redis_instance=redis_instance,
+    redis_password_secret=redis_password_secret,
+    redis_password_version=redis_password_version,
+    redis_ca_cert_secret=redis_ca_cert_secret,
+    redis_ca_cert_version=redis_ca_cert_version,
+    network=network,
+    subnetwork=subnetwork,
+    gcp_provider=gcp_provider,
+)
