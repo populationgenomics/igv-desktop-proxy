@@ -1,0 +1,38 @@
+name: Test
+on:
+  push:
+
+permissions: {}
+
+jobs:
+  unittests:
+    name: Run unit tests
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: 1
+      BUILDKIT_PROGRESS: plain
+      IGV_DOCKER: igvdproxy:dev
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e #v6.8.0
+        with:
+          activate-environment: true
+          enable-cache: false
+          version: 0.8.22 #uv version
+
+      - name: 'build image'
+        run: |
+          docker build --tag $IGV_DOCKER -f infrastructure/Dockerfile .
+
+      - name: 'Run unit tests'
+        id: runtests
+        run: |
+          uv run pytest --doctest-modules --doctest-continue-on-failure tests/
