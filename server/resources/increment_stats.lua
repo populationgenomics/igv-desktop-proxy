@@ -7,4 +7,3 @@
 
 redis.call('INCRBY', KEYS[1], ARGV[1])
 return redis.call('EXPIRE', KEYS[1], ARGV[2], 'NX')
-
