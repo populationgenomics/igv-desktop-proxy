@@ -25,12 +25,15 @@ class TestGCSStreamer:
             target_url='https://test.com/bucket/path',
             headers={},
             query_params={},
+            bucket_name='bucket',
         )
 
         assert isinstance(response, StreamingResponse)
         assert response.status_code == HTTPStatus.OK
+
         await client.aclose()
         mock_download_rate_limiter.refund.assert_not_called()
+        mock_download_rate_limiter.record_download_stats.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_stream_from_gcs_raise_error(self, mock_download_rate_limiter: MagicMock):
@@ -47,6 +50,7 @@ class TestGCSStreamer:
                 target_url='https://test.com/bucket/path',
                 headers={},
                 query_params={},
+                bucket_name='bucket',
             )
         assert exc.value.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
         await client.aclose()
@@ -66,6 +70,7 @@ class TestGCSStreamer:
                 target_url='https://test.com/bucket/path',
                 headers={},
                 query_params={},
+                bucket_name='bucket',
             )
         await client.aclose()
 
@@ -79,7 +84,7 @@ class TestGCSStreamer:
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler=handler))
         gcs_streamer = GCSStreamer(client, mock_download_rate_limiter)
         with pytest.raises(HTTPException) as exc:
-            await gcs_streamer.stream_from_gcs('GET', 'https://test.com/bucket/path', {}, {})
+            await gcs_streamer.stream_from_gcs('GET', 'https://test.com/bucket/path', {}, {}, bucket_name='bucket')
         assert exc.value.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
         await client.aclose()
         mock_download_rate_limiter.refund.assert_called_once()
@@ -94,7 +99,7 @@ class TestGCSStreamer:
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler=handler))
         gcs_streamer = GCSStreamer(client, mock_download_rate_limiter)
         with pytest.raises(HTTPException) as exc:
-            await gcs_streamer.stream_from_gcs('GET', 'https://test.com/bucket/path', {}, {})
+            await gcs_streamer.stream_from_gcs('GET', 'https://test.com/bucket/path', {}, {}, bucket_name='bucket')
         assert exc.value.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
         await client.aclose()
         mock_download_rate_limiter.refund.assert_called_once()

@@ -4,14 +4,14 @@ from uuid import UUID
 
 import redis.asyncio as redis
 
-from server.utils.constants import CAPPED_TIME_WINDOW_SECS, DOWNLOAD_CAP_BYTES
+from server.utils.constants import CAPPED_TIME_WINDOW_SECS, DOWNLOAD_CAP_BYTES, STATS_KEY_TTL_SECS
 
 
 class RateLimitRedisClient:
     """Redis client wrapper with Lua scripts."""
 
     def __init__(self, client: redis.Redis) -> None:
-        """Initialize the client."""
+        """Initialize the client and register LUA scripts."""
         self._client = client
         resources_path = Path(__file__).parent.parent / 'resources'
         self._check_available_limit = self._client.register_script(
@@ -22,6 +22,9 @@ class RateLimitRedisClient:
         )
         self._release_lock = self._client.register_script(
             (resources_path / 'release_lock.lua').read_text(),
+        )
+        self._increment_stats = self._client.register_script(
+            (resources_path / 'increment_stats.lua').read_text(),
         )
 
     async def deduct_if_balance(self, user_sub: str, request_bytes: int, now: float) -> int:
@@ -51,6 +54,16 @@ class RateLimitRedisClient:
             args=[uuid.bytes],
         )
 
+    async def increment_download_stats(self, stats_key: str, bytes_count: int) -> None:
+        """Increment the download byte counter for a (user, bucket, date) key.
+
+        Sets a 49-hour TTL on first write.
+        """
+        await self._increment_stats(
+            keys=[stats_key],
+            args=[bytes_count, STATS_KEY_TTL_SECS],
+        )
+
     async def aclose(self) -> None:
         """Close the Redis connection and removes local script references."""
         try:
@@ -59,6 +72,7 @@ class RateLimitRedisClient:
             self._check_available_limit = None
             self._refund_on_fail = None
             self._release_lock = None
+            self._increment_stats = None
 
     def __getattr__(self, name: str) -> Any:
         """Proxy all other redis.Redis methods (get, set, delete) transparently."""

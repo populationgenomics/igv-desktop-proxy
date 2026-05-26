@@ -56,14 +56,30 @@ def test_validate_auth_invalid_format():
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_not_applied_for_index_file(
+async def test_rate_limit_not_applied_for_cram_index_file_if_range_not_specified(
     mock_httpx_client: httpx.AsyncClient,
     mock_redis_client: AsyncMock,
 ):
-    """Test returning None for index files."""
+    """Test returning None for CRAM index files."""
     result = await rate_limit_if_applicable(
         object_path='file.cram.crai',  # index file
-        range_header='bytes=0-100',
+        range_header=None,
+        user_token=dummy_auth_string,
+        httpx_client=mock_httpx_client,
+        redis_client=mock_redis_client,
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_not_applied_for_bam_index_file_if_range_not_specified(
+    mock_httpx_client: httpx.AsyncClient,
+    mock_redis_client: AsyncMock,
+):
+    """Test returning None for BAM index files."""
+    result = await rate_limit_if_applicable(
+        object_path='file.bam.bai',  # index file
+        range_header=None,
         user_token=dummy_auth_string,
         httpx_client=mock_httpx_client,
         redis_client=mock_redis_client,
@@ -89,19 +105,28 @@ async def test_raise_error_when_range_not_specified_for_non_index_files(
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_not_applied_for_first_byte_range(
+async def test_successfully_apply_rate_limit_for_index_file(
     mock_httpx_client: httpx.AsyncClient,
     mock_redis_client: AsyncMock,
 ):
-    """Test rate limit not applied for if requesting first byte range."""
-    result = await rate_limit_if_applicable(
-        object_path='file.cram',
-        range_header='bytes=0-511999',
-        user_token=dummy_auth_string,
-        httpx_client=mock_httpx_client,
-        redis_client=mock_redis_client,
-    )
-    assert result is None
+    """Test successfully check user limits for index file.
+
+    Allow if quota not exceeded when requesting index file (range header included).
+    """
+    with patch(
+        'server.services.rate_limiter.DownloadRateLimiter.check_user_limit',
+        new_callable=AsyncMock,
+    ) as mock_check:
+        mock_check.return_value = True
+        result = await rate_limit_if_applicable(
+            object_path='file.cram.crai',
+            range_header='bytes=0-999999',
+            user_token=dummy_auth_string,
+            httpx_client=mock_httpx_client,
+            redis_client=mock_redis_client,
+        )
+        assert isinstance(result, DownloadRateLimiter)
+        assert result.request_bytes == 1000000  # noqa: PLR2004
 
 
 @pytest.mark.asyncio
