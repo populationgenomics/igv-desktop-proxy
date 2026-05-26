@@ -7,8 +7,6 @@ from server.services.rate_limit_store import RateLimitRedisClient
 from server.services.rate_limiter import DownloadRateLimiter
 from server.utils.constants import (
     AUTH_HEADER_PARTS,
-    BAM_INDEX_FILE_EXTENSION,
-    CRAM_INDEX_FILE_EXTENSION,
     REQUEST_URL_PARTS,
 )
 from server.utils.helpers import get_byte_range
@@ -70,7 +68,7 @@ async def rate_limit_if_applicable(
         (varied ranges-does not stick to 512 KB).
     """
     if range_header is None:  # range header specified for non-index files
-        is_index_file = object_path.endswith((CRAM_INDEX_FILE_EXTENSION, BAM_INDEX_FILE_EXTENSION))
+        is_index_file = object_path.endswith(('.crai', '.bai', '.csi', '.tbi'))
 
         if is_index_file:
             return None

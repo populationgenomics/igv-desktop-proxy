@@ -1,12 +1,9 @@
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import redis.asyncio as redis
 
-from server.resources.deduct_from_budget_lua_script import DEDUCT_LUA_SCRIPT
-from server.resources.increment_stats_lua_script import INCREMENT_STATS_LUA_SCRIPT
-from server.resources.refund_to_budget_lua_script import REFUND_LUA_SCRIPT
-from server.resources.release_lock_lua_script import RELEASE_LOCK_LUA_SCRIPT
 from server.utils.constants import CAPPED_TIME_WINDOW_SECS, DOWNLOAD_CAP_BYTES, STATS_KEY_TTL_SECS
 
 
@@ -16,10 +13,19 @@ class RateLimitRedisClient:
     def __init__(self, client: redis.Redis) -> None:
         """Initialize the client and register LUA scripts."""
         self._client = client
-        self._check_available_limit = client.register_script(DEDUCT_LUA_SCRIPT)
-        self._refund_on_fail = client.register_script(REFUND_LUA_SCRIPT)
-        self._release_lock = client.register_script(RELEASE_LOCK_LUA_SCRIPT)
-        self._increment_stats = client.register_script(INCREMENT_STATS_LUA_SCRIPT)
+        resources_path = Path(__file__).parent.parent / 'resources'
+        self._check_available_limit = self._client.register_script(
+            (resources_path / 'deduct_from_budget.lua').read_text(),
+        )
+        self._refund_on_fail = self._client.register_script(
+            (resources_path / 'refund_to_budget.lua').read_text(),
+        )
+        self._release_lock = self._client.register_script(
+            (resources_path / 'release_lock.lua').read_text(),
+        )
+        self._increment_stats = self._client.register_script(
+            (resources_path / 'increment_stats.lua').read_text(),
+        )
 
     async def deduct_if_balance(self, user_sub: str, request_bytes: int, now: float) -> int:
         """Deduct request_range bytes from users download budget if sufficient download quota is available.
@@ -69,5 +75,5 @@ class RateLimitRedisClient:
             self._increment_stats = None
 
     def __getattr__(self, name: str) -> Any:
-        """Proxy all other redis.Redis methods (get, set, delete, aclose, …) transparently."""
+        """Proxy all other redis.Redis methods (get, set, delete) transparently."""
         return getattr(self._client, name)

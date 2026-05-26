@@ -1,16 +1,16 @@
-# Adapted from - https://github.com/alisaifee/limits,
-# https://redis.io/tutorials/howtos/ratelimiting/#1-fixed-window-counter
+--  Adapted from - https://github.com/alisaifee/limits,
+--  https://redis.io/tutorials/howtos/ratelimiting/#1-fixed-window-counter
 
-# Keys:   KEYS[1] = user_sub       (user sub key)
-# Args:   ARGV[1] = request_bytes  (bytes being requested)
-#         ARGV[2] = cap            (total bytes allowed per window)
-#         ARGV[3] = window         (window duration in seconds)
-#         ARGV[4] = now            (current unix timestamp as float)
-#
-# Returns:
-#   >= 0  → allowed; remaining bytes after substracting from the download quota
-#     -1  → denied (cap exceeded)
-DEDUCT_LUA_SCRIPT = """
+--  Keys:   KEYS[1] = user_sub       (user sub key)
+--  Args:   ARGV[1] = request_bytes  (bytes being requested)
+--          ARGV[2] = cap            (total bytes allowed per window)
+--          ARGV[3] = window         (window duration in seconds)
+--          ARGV[4] = now            (current unix timestamp as float)
+--
+--  Returns:
+--    >= 0  → allowed; remaining bytes after subtracting from the download quota
+--      -1  → denied (cap exceeded)
+
 local key                = KEYS[1]
 local request_bytes      = tonumber(ARGV[1])
 local cap                = tonumber(ARGV[2])
@@ -36,4 +36,3 @@ local new_expire    = now + window
 redis.call('HSET', key, 'remaining_bytes', new_remaining, 'expire_time', new_expire)
 redis.call('EXPIREAT', key, math.ceil(new_expire))
 return new_remaining
-"""

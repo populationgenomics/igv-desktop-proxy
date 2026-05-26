@@ -1,6 +1,6 @@
 from starlette.datastructures import Headers
 
-from server.utils.helpers import format_redis_key, get_byte_range, get_headers, is_none
+from server.utils.helpers import get_byte_range, get_headers, is_none
 
 
 def test_get_byte_range():
@@ -48,13 +48,3 @@ def test_is_none():
     assert is_none(None) is True
     assert is_none('') is False
     assert is_none(0) is False
-
-
-def test_format_redis_key():
-    """Test returns prefix:key string."""
-    assert format_redis_key('token', 'abc123') == 'token:abc123'
-
-
-def test_format_redis_key_returns_none_when_prefix_is_none():
-    """Test returns key when prefix is None."""
-    assert format_redis_key(None, 'abc123') == 'abc123'
