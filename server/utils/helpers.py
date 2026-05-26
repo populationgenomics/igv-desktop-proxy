@@ -20,6 +20,9 @@ def get_headers(headers: Headers) -> dict[str, str]:
     if 'range' in headers:
         _headers['Range'] = headers['range']
 
+    if 'accept' in headers:
+        _headers['Accept'] = headers['accept']
+
     return _headers
 
 

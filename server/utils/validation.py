@@ -5,7 +5,10 @@ from fastapi import HTTPException
 
 from server.services.rate_limit_store import RateLimitRedisClient
 from server.services.rate_limiter import DownloadRateLimiter
-from server.utils.constants import AUTH_HEADER_PARTS, CRAM_INDEX_FILE_EXTENSION, FIRST_BYTE_RANGE, REQUEST_URL_PARTS
+from server.utils.constants import (
+    AUTH_HEADER_PARTS,
+    REQUEST_URL_PARTS,
+)
 from server.utils.helpers import get_byte_range
 
 
@@ -48,20 +51,30 @@ async def rate_limit_if_applicable(
 
     For CRAM files:
         the initial requests usually fetch content from the CRAM index file.
-        Subsequent requests for a specific region typically include one request for the actual byte range and another
-        for the first 512 KB. Rate limiting is therefore applied only when the request targets CRAM data
-        for a specific region beyond the first 512 KB.
+        Requests to fetch index file data some time include range header ('range': 'bytes=0-999999'), some not.
+        Requests for a specific region in the CRAM file (non-index) typically includes a request
+        for the actual byte range and (occasionally) another for the first 512 KB.
+
+    For BAM files:
+        Similar to CRAM files. The initial requests usually fetch content from the BAM index file.
+        Requests to fetch index file data some time include range header ('range': 'bytes=0-999999'), some not.
+        Requests for a specific region in the BAM file (non-index) typically includes a request
+        for the actual byte range and (occasionally) another for the first 512 KB.
+
+    For BigWig files:
+        https://genome.ucsc.edu/goldenpath/help/bigWig.html
+        Already indexed file.
+        Requests for a specific region in the BigWig file includes a range request
+        (varied ranges-does not stick to 512 KB).
     """
-    is_index_file = object_path.endswith(CRAM_INDEX_FILE_EXTENSION)
+    if range_header is None:  # range header specified for non-index files
+        is_index_file = object_path.endswith(('.crai', '.bai', '.csi', '.tbi'))
 
-    if is_index_file:
-        return None
+        if is_index_file:
+            return None
 
-    if range_header is None:  # range header is expected for non-index files
+        # Reject the request if range is not specified as we can not rate-limit them otherwise
         raise HTTPException(HTTPStatus.BAD_REQUEST)
-
-    if range_header == FIRST_BYTE_RANGE:
-        return None
 
     request_bytes = get_byte_range(range_header)
 

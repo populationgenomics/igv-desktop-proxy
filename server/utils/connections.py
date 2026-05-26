@@ -31,7 +31,23 @@ def create_redis_pool() -> redis.ConnectionPool:
     redis_host = os.environ.get('REDIS_HOST', REDIS_DEFAULT_CONFIGS.get('host'))
     env_port = os.environ.get('REDIS_PORT')
     redis_port = int(env_port) if env_port else REDIS_DEFAULT_CONFIGS.get('port')
+    redis_password = os.environ.get('REDIS_PASSWORD')
+    redis_cert_path = os.environ.get('REDIS_CERT_PATH')
 
-    url = f'redis://{redis_host}:{redis_port}/0'
+    scheme = 'rediss' if redis_cert_path else 'redis'
+    if redis_password:
+        url = f'{scheme}://:{redis_password}@{redis_host}:{redis_port}/0'
+    else:
+        url = f'{scheme}://{redis_host}:{redis_port}/0'
 
-    return redis.BlockingConnectionPool.from_url(url=url, max_connections=20, decode_responses=True, timeout=5)
+    kwargs = {
+        'url': url,
+        'max_connections': 20,
+        'decode_responses': True,
+        'timeout': 5,
+    }
+
+    if redis_cert_path:
+        kwargs['ssl_ca_certs'] = redis_cert_path
+
+    return redis.BlockingConnectionPool.from_url(**kwargs)
