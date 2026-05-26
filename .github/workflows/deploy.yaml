@@ -1,6 +1,6 @@
 name: Deploy
 on:
-  # Building on manual dispatch, and pushes to dev / main.
+  # Building on manual dispatch, and pushes to dev/main.
   workflow_dispatch:
   push:
     branches:
