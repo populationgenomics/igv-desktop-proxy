@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential_jitter
 
 from server.services.rate_limit_store import RateLimitRedisClient
-from server.utils.constants import CPG_HOSTED_DOMAIN, LOCK_PREFIX, STATS_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
+from server.utils.constants import LOCK_PREFIX, STATS_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
 from server.utils.helpers import is_none
 
 
@@ -73,17 +73,13 @@ class DownloadRateLimiter:
                 user_info = await self.fetch_user_info()
                 if user_info:
                     user_sub = user_info.get('sub')
-                    hd = user_info.get('hd')  # validate domain membership
-
-                    if user_sub and hd == CPG_HOSTED_DOMAIN:
-                        await self.redis_client.set(
-                            token_key,
-                            user_sub,
-                            ex=3600,
-                            nx=True,
-                        )  # expire this key after 1-hour. Mirror expiry time of the access token
-                        return user_sub
-                    raise HTTPException(HTTPStatus.UNAUTHORIZED)
+                    await self.redis_client.set(
+                        token_key,
+                        user_sub,
+                        ex=3600,
+                        nx=True,
+                    )  # expire this key after 1-hour. Mirror expiry time of the access token
+                    return user_sub
             finally:
                 await self.redis_client.release_lock(lock_key, request_uuid)
 
