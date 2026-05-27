@@ -1,7 +1,6 @@
 # Application constants
 
 GCS_BASE_URL = 'storage-download.googleapis.com'
-CPG_HOSTED_DOMAIN = 'populationgenomics.org.au'
 
 REQUEST_URL_PARTS = 2
 AUTH_HEADER_PARTS = 2
