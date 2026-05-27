@@ -79,6 +79,18 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         opts=gcp_opts,
     )
 
+    # Gives service account that deploy from github - iam.serviceaccounts.actAs permission
+    deployer_service_account_name = os.environ.get(
+        'DEPLOY_SERVICE_ACCOUNT_NAME',
+    )
+    deploy_sa_act_as = gcp.serviceaccount.IAMMember(
+        'deploy-sa-act-as-function-sa',
+        service_account_id=download_stats_exporter_sa.name,
+        role='roles/iam.serviceAccountUser',
+        member=f'serviceAccount:{deployer_service_account_name}',
+        opts=gcp_opts,
+    )
+
     # GCS bucket to hold the Cloud Function source archive
     source_bucket = gcp.storage.Bucket(
         'stats-exporter-cloud-function-source-bucket',
@@ -164,7 +176,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         ),
         opts=ResourceOptions(
             provider=gcp_provider,
-            depends_on=[redis_iam, redis_password_version, redis_ca_cert_version],
+            depends_on=[redis_iam, redis_password_version, redis_ca_cert_version, deploy_sa_act_as],
         ),
     )
 

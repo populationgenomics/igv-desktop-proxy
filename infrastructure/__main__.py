@@ -311,9 +311,6 @@ gcp.compute.GlobalForwardingRule(
     opts=gcp_opts,
 )
 
-
-pulumi.export('load balancer ip', ip_address.address)
-
 # create cloud run function to export download stats
 create_download_stats_exporter_resources(
     stack=stack,

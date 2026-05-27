@@ -81,6 +81,7 @@ jobs:
           APP_CONFIG_STATS_ARCHIVE_BUCKET: ${{ vars.APP_CONFIG_STATS_ARCHIVE_BUCKET }}
           APP_CONFIG_CLOUD_FUNCTION_SOURCE_BUCKET: ${{ vars.APP_CONFIG_CLOUD_FUNCTION_SOURCE_BUCKET }}
           APP_CONFIG_SLACK_CHANNEL_ID: ${{ secrets.APP_CONFIG_SLACK_CHANNEL_ID }}
+          DEPLOY_SERVICE_ACCOUNT_NAME: ${{ vars.DEPLOY_SERVICE_ACCOUNT_NAME }}
 
           # skip checkpointing to speed-up the workflow, and avoid lots of saved state jsons
           PULUMI_SKIP_CHECKPOINTS: true
