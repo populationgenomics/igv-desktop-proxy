@@ -80,9 +80,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
     )
 
     # Gives service account that deploy from github - iam.serviceaccounts.actAs permission
-    deployer_service_account_name = os.environ.get(
-        'DEPLOY_SERVICE_ACCOUNT_NAME',
-    )
+    deployer_service_account_name = os.environ['DEPLOY_SERVICE_ACCOUNT_NAME']
     deploy_sa_act_as = gcp.serviceaccount.IAMMember(
         'deploy-sa-act-as-function-sa',
         service_account_id=download_stats_exporter_sa.name,
