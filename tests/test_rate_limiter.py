@@ -7,7 +7,6 @@ import tenacity
 from fastapi import HTTPException
 
 from server.services.rate_limiter import DownloadRateLimiter
-from server.utils.constants import CPG_HOSTED_DOMAIN
 
 
 class TestDownloadRateLimiter:
@@ -69,7 +68,7 @@ class TestDownloadRateLimiter:
     @pytest.mark.asyncio
     async def test_get_authenticated_user_id_retry_logic(self) -> None:
         """Test get_authenticated_user_id retry  acquire the lock before invoking userinfo endpoint."""
-        user_info = {'sub': 'user_after_retry', 'hd': CPG_HOSTED_DOMAIN}
+        user_info = {'sub': 'user_after_retry'}
 
         with (
             patch('asyncio.sleep', new_callable=AsyncMock),
@@ -114,11 +113,11 @@ class TestDownloadRateLimiter:
     async def test_fetch_user_info_success(self):
         """Test fetch_user_info returns user sub and hd."""
         mock_response = AsyncMock(spec=httpx.Response)
-        mock_response.json.return_value = {'sub': 'user123', 'hd': CPG_HOSTED_DOMAIN}
+        mock_response.json.return_value = {'sub': 'user123'}
 
         with patch.object(self.rate_limiter.http_client, 'get', return_value=mock_response):
             user_info = await self.rate_limiter.fetch_user_info()
-            assert user_info == {'sub': 'user123', 'hd': CPG_HOSTED_DOMAIN}
+            assert user_info == {'sub': 'user123'}
 
     @pytest.mark.asyncio
     async def test_fetch_user_info_failure(self):
