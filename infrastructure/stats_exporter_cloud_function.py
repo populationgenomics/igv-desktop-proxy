@@ -123,6 +123,51 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         },
     )
 
+    # Create service account specifically for building the Cloud Function
+    download_stats_exporter_build_sa = gcp.serviceaccount.Account(
+        'download-stats-export-build-sa',
+        account_id=f'dl-stats-exporter-build-{stack}',
+        display_name=f'IGV desktop proxy download stats exporter build SA ({stack})',
+        opts=gcp_opts,
+    )
+
+    # Grant roles/logging.logWriter to the build service account
+    gcp.projects.IAMMember(
+        'download-stats-exporter-build-log-writer',
+        project=_gcp_project,
+        role='roles/logging.logWriter',
+        member=download_stats_exporter_build_sa.email.apply(lambda e: f'serviceAccount:{e}'),
+        opts=gcp_opts,
+    )
+
+    # Grant roles/storage.objectViewer at the project level to the build service account
+    # (required to read source code from gcf-v2-sources bucket and custom source bucket during Cloud Build)
+    gcp.projects.IAMMember(
+        'download-stats-exporter-build-gcs-reader',
+        project=_gcp_project,
+        role='roles/storage.objectViewer',
+        member=download_stats_exporter_build_sa.email.apply(lambda e: f'serviceAccount:{e}'),
+        opts=gcp_opts,
+    )
+
+    # Grant roles/artifactregistry.writer to the build service account
+    gcp.projects.IAMMember(
+        'download-stats-exporter-build-ar-writer',
+        project=_gcp_project,
+        role='roles/artifactregistry.writer',
+        member=download_stats_exporter_build_sa.email.apply(lambda e: f'serviceAccount:{e}'),
+        opts=gcp_opts,
+    )
+
+    # Grant roles/iam.serviceAccountUser to the deployer service account on this build service account
+    deploy_sa_act_as_build_sa = gcp.serviceaccount.IAMMember(
+        'deploy-sa-act-as-build-sa',
+        service_account_id=download_stats_exporter_build_sa.name,
+        role='roles/iam.serviceAccountUser',
+        member=f'serviceAccount:{deployer_service_account_name}',
+        opts=gcp_opts,
+    )
+
     # Cloud Function Gen 2
     cloud_function = gcp.cloudfunctionsv2.Function(
         'download-stats-exporter-function',
@@ -131,6 +176,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         build_config=gcp.cloudfunctionsv2.FunctionBuildConfigArgs(
             runtime='python311',
             entry_point='export_download_stats',
+            service_account=download_stats_exporter_build_sa.name,
             source=gcp.cloudfunctionsv2.FunctionBuildConfigSourceArgs(
                 storage_source=gcp.cloudfunctionsv2.FunctionBuildConfigSourceStorageSourceArgs(
                     bucket=source_bucket.name,
@@ -174,7 +220,13 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         ),
         opts=ResourceOptions(
             provider=gcp_provider,
-            depends_on=[redis_iam, redis_password_version, redis_ca_cert_version, deploy_sa_act_as],
+            depends_on=[
+                redis_iam,
+                redis_password_version,
+                redis_ca_cert_version,
+                deploy_sa_act_as,
+                deploy_sa_act_as_build_sa,
+            ],
         ),
     )
 
