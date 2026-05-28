@@ -98,6 +98,15 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         opts=gcp_opts,
     )
 
+    # Grant deployer service account storage.objectAdmin on the source bucket
+    deployer_source_bucket_object_admin = gcp.storage.BucketIAMMember(
+        'deployer-source-bucket-object-admin',
+        bucket=source_bucket.name,
+        role='roles/storage.objectAdmin',
+        member=f'serviceAccount:{deployer_service_account_name}',
+        opts=gcp_opts,
+    )
+
     source_path = '../stats_exporter/source.zip'
     file_hash = get_file_content_hash(source_path)  # update sources if there are any changes
 
@@ -107,7 +116,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         bucket=source_bucket.name,
         name=f'source.{file_hash[:16]}.zip',
         source=pulumi.FileAsset(source_path),
-        opts=gcp_opts,
+        opts=ResourceOptions(provider=gcp_provider, depends_on=[deployer_source_bucket_object_admin]),
     )
 
     # Build the environment variables dict,
