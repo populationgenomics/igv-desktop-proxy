@@ -13,6 +13,7 @@ _gcp_region = os.environ['PULUMI_CONFIG_GCP_REGION']
 _gcp_project = os.environ['PULUMI_CONFIG_GCP_PROJECT']
 _app_domain = os.environ['PULUMI_CONFIG_APP_DOMAIN']
 _private_config_stack = os.environ['PULUMI_CONFIG_PRIVATE_CONFIG_STACK']
+_deployer_service_account_name = os.environ['DEPLOY_SERVICE_ACCOUNT_NAME']
 
 gcp_provider = gcp.Provider('gcp', project=_gcp_project, region=_gcp_region)
 gcp_opts = ResourceOptions(provider=gcp_provider)
@@ -57,6 +58,15 @@ service_account = gcp.serviceaccount.Account(
     'igv-desktop-proxy-service-account',
     account_id=f'igv-desktop-proxy-{stack}',
     display_name=f'IGV Desktop Proxy ({stack})',
+    opts=gcp_opts,
+)
+
+# Allow the deployer SA to actAs the Cloud Run service account
+deploy_sa_act_as_cloud_run_sa = gcp.serviceaccount.IAMMember(
+    'deploy-sa-act-as-cloud-run-sa',
+    service_account_id=service_account.name,
+    role='roles/iam.serviceAccountUser',
+    member=f'serviceAccount:{_deployer_service_account_name}',
     opts=gcp_opts,
 )
 
@@ -230,7 +240,7 @@ cloud_run = gcp.cloudrunv2.Service(
     ),
     opts=ResourceOptions(
         provider=gcp_provider,
-        depends_on=[redis_iam, redis_password_version],
+        depends_on=[redis_iam, redis_password_version, deploy_sa_act_as_cloud_run_sa],
     ),
 )
 
