@@ -79,23 +79,6 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         opts=gcp_opts,
     )
 
-    # Allow the custom SA to write built container images to Artifact Registry
-    gcp.projects.IAMMember(
-        'download-stats-exporter-artifact-writer',
-        project=_gcp_project,
-        role='roles/artifactregistry.writer',
-        member=download_stats_exporter_sa.email.apply(lambda e: f'serviceAccount:{e}'),
-        opts=gcp_opts,
-    )
-
-    # Allow the service account to write logs (Required for both Build and Runtime phases)
-    gcp.projects.IAMMember(
-        'download-stats-exporter-log-writer',
-        project=_gcp_project,
-        role='roles/logging.logWriter',
-        member=download_stats_exporter_sa.email.apply(lambda e: f'serviceAccount:{e}'),
-        opts=gcp_opts,
-    )
 
     # GCS bucket to hold the Cloud Function source archive
     source_bucket = gcp.storage.Bucket(
@@ -106,14 +89,6 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         opts=gcp_opts,
     )
 
-    # Allow the service account to read the source code zip during the build phase
-    gcp.storage.BucketIAMMember(
-        'download-stats-exporter-source-viewer',
-        bucket=source_bucket.name,
-        role='roles/storage.objectViewer',
-        member=download_stats_exporter_sa.email.apply(lambda e: f'serviceAccount:{e}'),
-        opts=gcp_opts,
-    )
 
     # Gives service account that deploy from github - iam.serviceaccounts.actAs permission
     deployer_service_account_name = os.environ['DEPLOY_SERVICE_ACCOUNT_NAME']
@@ -158,7 +133,9 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         build_config=gcp.cloudfunctionsv2.FunctionBuildConfigArgs(
             runtime='python311',
             entry_point='export_download_stats',
-            service_account=download_stats_exporter_sa.name,
+            service_account=pulumi.Output.all(_gcp_project, deployer_service_account_name).apply(
+    lambda args: f'projects/{args[0]}/serviceAccounts/{args[1]}'
+),
             source=gcp.cloudfunctionsv2.FunctionBuildConfigSourceArgs(
                 storage_source=gcp.cloudfunctionsv2.FunctionBuildConfigSourceStorageSourceArgs(
                     bucket=source_bucket.name,
