@@ -61,7 +61,7 @@ service_account = gcp.serviceaccount.Account(
     opts=gcp_opts,
 )
 
-# Allow the deployer SA to actAs the Cloud Run service account
+# Allow the deployer service account to actAs the Cloud Run service account
 deploy_sa_act_as_cloud_run_sa = gcp.serviceaccount.IAMMember(
     'deploy-sa-act-as-cloud-run-sa',
     service_account_id=service_account.name,
