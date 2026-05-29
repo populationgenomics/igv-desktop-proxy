@@ -98,6 +98,15 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         opts=gcp_opts,
     )
 
+    # Allows the deployer service account to upload cloud function's source files
+    gcp.storage.BucketIAMMember(
+        'deploy-sa-cloud-function-bucket-admin',
+        bucket=source_bucket.name,
+        role='roles/storage.objectAdmin',
+        member=f'serviceAccount:{deployer_service_account_name}',
+        opts=gcp_opts,
+    )
+
     source_path = '../stats_exporter/source.zip'
     file_hash = get_file_content_hash(source_path)  # update sources if there are any changes
 
