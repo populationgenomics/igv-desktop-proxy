@@ -116,7 +116,7 @@ def create_download_stats_exporter_resources(  # noqa: PLR0913
         bucket=source_bucket.name,
         name=f'source.{file_hash[:16]}.zip',
         source=pulumi.FileAsset(source_path),
-        opts=ResourceOptions(provider=gcp_provider),
+        opts=gcp_opts,
     )
 
     # Build the environment variables dict,
