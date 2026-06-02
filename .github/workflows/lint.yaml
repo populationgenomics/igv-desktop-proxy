@@ -1,25 +1,35 @@
 name: Lint
 on: [push]
 
+permissions: {}
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         shell: bash -l {0}
 
     steps:
-    - uses: actions/checkout@v4
-
-    - uses: actions/setup-python@v4
+    - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       with:
-        python-version: '3.10'
+        persist-credentials: false
+
+    - name: "Set up Python"
+      uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+      with:
+        python-version-file: "pyproject.toml"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+      with:
+        enable-cache: true
+        version: 0.9.13
 
     - name: Install packages
-      run: pip install -r requirements-dev.txt
-
-    - name: Install pre-commit hooks
-      run: pre-commit install --install-hooks
+      run: uv sync --locked
 
     - name: Run pre-commit
-      run: pre-commit run --all-files
+      run: uv run pre-commit run --all-files

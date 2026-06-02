@@ -1,0 +1,81 @@
+name: Security Checks
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["**"]
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: Run zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@e639db99335bc9038abc0e066dfcd72e23d26fb4 # v0.3.0
+        with:
+          advanced-security: false
+
+  pip-audit-dev:
+    runs-on: ubuntu-latest
+    name: Pip Audit Dev
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        with:
+          activate-environment: true
+          enable-cache: false
+          version: 0.9.13
+
+      - name: Install project dependencies
+        run: |
+          uv venv --seed
+          uv sync --only-dev --locked
+
+      - uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 #v1.1.0
+        with:
+          virtual-environment: .venv
+          summary: true
+
+  pip-audit-prod:
+    runs-on: ubuntu-latest
+    name: Pip Audit Prod
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        with:
+          activate-environment: true
+          enable-cache: false
+          version: 0.9.13
+
+      - name: Install project dependencies
+        run: |
+          uv venv --seed
+          uv sync --no-dev --locked
+
+      - uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 #v1.1.0
+        with:
+          virtual-environment: .venv
+          summary: true
