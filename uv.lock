@@ -12,7 +12,6 @@ members = [
     "igv-desktop-proxy",
     "igv-desktop-proxy-download-stats-exporter",
 ]
-constraints = [{ name = "grpcio", specifier = ">=1.83.0" }]
 
 [[package]]
 name = "annotated-doc"

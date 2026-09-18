@@ -150,8 +150,5 @@ cpg = [
     "metamist",
 ]
 
-[tool.uv]
-constraint-dependencies = ["grpcio>=1.83.0"]
-
 [tool.uv.workspace]
 members = ["stats_exporter"]
