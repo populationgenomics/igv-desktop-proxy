@@ -152,3 +152,8 @@ cpg = [
 
 [tool.uv.workspace]
 members = ["stats_exporter"]
+
+[tool.uv]
+constraint-dependencies = [
+    "grpcio>=1.83.0",
+]
