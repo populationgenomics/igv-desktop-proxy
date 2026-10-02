@@ -1,3 +1,4 @@
+import pytest
 from starlette.datastructures import Headers
 
 from server.utils.helpers import build_gcs_headers, get_byte_range, get_headers, is_none
@@ -7,6 +8,26 @@ def test_get_byte_range():
     """Test get total bytes in range."""
     assert get_byte_range('bytes=0-511999') == 512000  # noqa: PLR2004
     assert get_byte_range('bytes=100-200') == 101  # noqa: PLR2004
+    assert get_byte_range('bytes=5-5') == 1
+
+
+UNMETERABLE_RANGES = [
+    'bytes=1000-',  # open-ended
+    'bytes=-500',  # suffix
+    'bytes=0-1,5-6',  # multi-range
+    'bytes=200-100',  # start after end would credit the budget
+    'bytes=a-b',
+    'bytes=',
+    'foo',
+    '0-100',  # missing unit
+    'items=0-100',  # wrong unit
+]
+
+
+@pytest.mark.parametrize('range_header', UNMETERABLE_RANGES)
+def test_get_byte_range_returns_none_for_an_unmeterable_range(range_header: str):
+    """Test anything but a single closed, ordered range yields no byte count rather than raising."""
+    assert get_byte_range(range_header) is None
 
 
 def test_get_headers():

@@ -1,13 +1,26 @@
+import re
 from typing import Any
 
 from starlette.datastructures import Headers
 
+# A single closed range, the only form whose byte count is known before the response arrives.
+CLOSED_BYTE_RANGE = re.compile(r'bytes=([0-9]+)-([0-9]+)', re.IGNORECASE)
 
-def get_byte_range(range_header: str) -> int:
-    """Return the total bytes in the given byte range."""
-    range_parts = range_header.replace('bytes=', '').split('-')
-    start_byte = int(range_parts[0])
-    end_byte = int(range_parts[1])
+
+def get_byte_range(range_header: str) -> int | None:
+    """Return the total bytes in a single closed `bytes=START-END` range, or None.
+
+    None covers every Range that has no exact byte count: open-ended (`bytes=1000-`), suffix
+    (`bytes=-500`), multi-range, unparseable, and START > END — that last would otherwise yield a
+    zero or negative count and credit the caller's budget.
+    """
+    match = CLOSED_BYTE_RANGE.fullmatch(range_header.strip())
+    if match is None:
+        return None
+
+    start_byte, end_byte = int(match[1]), int(match[2])
+    if start_byte > end_byte:
+        return None
 
     return end_byte - start_byte + 1
 
