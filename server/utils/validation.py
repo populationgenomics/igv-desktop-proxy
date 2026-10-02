@@ -1,12 +1,13 @@
+import logging
 from http import HTTPStatus
 
-import httpx
 from fastapi import HTTPException
 
-from server.services.rate_limit_store import RateLimitRedisClient
+from server.services.access_list import IgvProxyAccessList
 from server.services.rate_limiter import DownloadRateLimiter
 from server.utils.constants import (
     AUTH_HEADER_PARTS,
+    INDEX_FILE_SUFFIXES,
     REQUEST_URL_PARTS,
 )
 from server.utils.helpers import get_byte_range
@@ -40,14 +41,38 @@ def validate_auth(headers: dict) -> str:
     return user_token[1].strip()
 
 
-async def rate_limit_if_applicable(
-    object_path: str,
-    range_header: str | None,
-    user_token: str,
-    httpx_client: httpx.AsyncClient,
-    redis_client: RateLimitRedisClient,
-) -> DownloadRateLimiter | None:
-    """Check whether this request should be rate-limited.
+def forbidden_detail(bucket: str) -> str:
+    """Return the 403 body.
+
+    403 is the ordinary answer for a new external collaborator until their PR lands, so it has to
+    route them to the fix rather than just refuse. Naming the bucket discloses nothing — the caller
+    typed it, and this says nothing about whether it exists. The dataset name is deliberately not
+    derived from it: the storage prefix is configurable, and a wrong dataset name here is worse
+    than none.
+    """
+    return (
+        f'Not authorized to read bucket `{bucket}`. If you hold personal IAM on this bucket, use '
+        "IGV's native Google access instead of the proxy. Otherwise, request access by opening a PR "
+        'against `cpg-infrastructure-private` adding your email to the `igv-desktop-access` list for '
+        'the dataset that owns this bucket.'
+    )
+
+
+async def authorize_bucket_access(access_list: IgvProxyAccessList, email: str, bucket: str) -> None:
+    """Refuse the request unless this user is listed against this bucket.
+
+    Raises 403 when the user is known but not permitted, and 503 (from the access list itself) when
+    no access map has ever loaded — the two must never be confused for one another.
+    """
+    if await access_list.is_allowed(email, bucket):
+        return
+
+    logging.info(f'Refused {email} access to {bucket}: not in the IGV proxy access map.')
+    raise HTTPException(HTTPStatus.FORBIDDEN, detail=forbidden_detail(bucket))
+
+
+def resolve_request_bytes(object_path: str, range_header: str | None) -> int | None:
+    """Return how many bytes this request reserves, or None if it is not metered.
 
     For CRAM files:
         the initial requests usually fetch content from the CRAM index file.
@@ -68,24 +93,31 @@ async def rate_limit_if_applicable(
         (varied ranges-does not stick to 512 KB).
     """
     if range_header is None:  # range header specified for non-index files
-        is_index_file = object_path.endswith(('.crai', '.bai', '.csi', '.tbi'))
-
-        if is_index_file:
+        if object_path.endswith(INDEX_FILE_SUFFIXES):
             return None
 
         # Reject the request if range is not specified as we can not rate-limit them otherwise
         raise HTTPException(HTTPStatus.BAD_REQUEST)
 
-    request_bytes = get_byte_range(range_header)
+    return get_byte_range(range_header)
 
-    rate_limiter = DownloadRateLimiter(
-        redis_client=redis_client,
-        http_client=httpx_client,
-        user_token=user_token,
-        request_bytes=request_bytes,
-    )
 
-    is_allowed = await rate_limiter.check_user_limit()
+async def rate_limit_if_applicable(
+    rate_limiter: DownloadRateLimiter,
+    request_bytes: int | None,
+) -> DownloadRateLimiter | None:
+    """Charge this request against the user's download budget, if it is a metered request.
+
+    Returns the limiter to hand to GCSStreamer, or None for an unmetered request. Handing the
+    limiter over anyway would call record_download_stats with request_bytes=0, writing zero-valued
+    dl_stats keys that the nightly CSV exporter would emit as empty rows.
+
+    The caller must have authorized the request first: a refused request must not consume budget.
+    """
+    if request_bytes is None:
+        return None
+
+    is_allowed = await rate_limiter.evaluate_download_limits()
     if not is_allowed:
         raise HTTPException(HTTPStatus.TOO_MANY_REQUESTS)
 

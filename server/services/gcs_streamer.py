@@ -9,6 +9,22 @@ from fastapi.responses import StreamingResponse
 
 from server.services.rate_limiter import DownloadRateLimiter
 
+# Upstream statuses that are a legitimate answer to the user's question, rather than a fault in
+# the proxy's own access. Everything else — notably 401/403/5xx — becomes a 502, because after the
+# credential swap an upstream refusal means this proxy's IAM is broken and must be alertable.
+PASS_THROUGH_STATUSES: dict[int, str] = {
+    HTTPStatus.NOT_FOUND: 'Object not found.',
+    HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE: 'Requested range not satisfiable.',
+}
+
+
+def map_upstream_error(upstream_status: int) -> tuple[int, str]:
+    """Return the (status, body) this proxy answers with for a given upstream failure."""
+    detail = PASS_THROUGH_STATUSES.get(upstream_status)
+    if detail is not None:
+        return upstream_status, detail
+    return HTTPStatus.BAD_GATEWAY.value, 'Upstream storage request failed.'
+
 
 class GCSStreamer:
     """Handles streaming data from Google Cloud Storage."""
@@ -62,8 +78,15 @@ class GCSStreamer:
 
             if isinstance(exc, httpx.HTTPStatusError):
                 await exc.response.aread()
-                logging.error(f'HTTP error {exc.response.status_code} while requesting {exc.request.url!r}.')
-                raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text) from exc
+                upstream_status = exc.response.status_code
+                logging.error(
+                    f'HTTP error {upstream_status} while requesting {exc.request.url!r}. '
+                    f'Upstream body: {exc.response.text}',
+                )
+                # Never relay the upstream body. The only principal GCS sees is this proxy's own
+                # service account, so its error XML names that account and confirms the bucket exists.
+                status, detail = map_upstream_error(upstream_status)
+                raise HTTPException(status_code=status, detail=detail) from exc
             if isinstance(exc, httpx.RequestError):
                 logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
                 raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR) from exc
