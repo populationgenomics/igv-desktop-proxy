@@ -12,9 +12,7 @@ from server.utils.constants import GCS_READ_SCOPE, PROXY_TOKEN_REFRESH_MARGIN_SE
 class ProxyCredentials:
     """Mints and caches the access token the proxy uses to read GCS on a user's behalf.
 
-    The scope is honoured for local ADC and key-file credentials. On the metadata server the
-    instance's own scopes govern, so treat the narrow scope as belt-and-braces for local runs
-    rather than as the security control.
+    The narrow scope only binds local ADC/key-file runs; on the metadata server, instance scopes govern.
     """
 
     def __init__(

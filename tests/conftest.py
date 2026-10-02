@@ -44,16 +44,14 @@ def streaming_response(status: HTTPStatus, data: bytes = b'', **kwargs: object) 
 class ProxyTransport(httpx.MockTransport):
     """A mock transport standing in for everything the proxy talks to over HTTP.
 
-    The proxy uses one httpx client for both Google's tokeninfo endpoint and GCS, so this routes by
-    host and records every outgoing request. Tests assert on what the proxy actually sent — most
-    importantly, that nothing at all was sent to GCS when a request was refused.
+    Routes tokeninfo vs GCS by host and records every request, so tests can assert nothing reached
+    GCS when a request was refused.
     """
 
     def __init__(self) -> None:
         """Start with a valid token and a successful GCS response.
 
-        `aud` and `scope` are here because tokeninfo really returns them, not because the proxy
-        reads them — it deliberately does not check which OAuth client minted the token.
+        `aud` and `scope` mirror real tokeninfo output; the proxy doesn't check them.
         """
         super().__init__(self._handle)
         self.requests: list[httpx.Request] = []
@@ -145,9 +143,8 @@ def mock_proxy_api(
 ) -> Generator[TestClient, None, None]:
     """Return a starlette TestClient with mock values.
 
-    The two new services are patched at their construction site as well as overridden as
-    dependencies: lifespan builds them before any dependency override applies, and building the
-    real ones would reach for application default credentials and Secret Manager.
+    Services are patched at construction too: lifespan builds them before overrides apply, and
+    the real ones would reach for ADC and Secret Manager.
     """
     app.dependency_overrides[get_redis_client] = lambda: mock_redis_client
     app.dependency_overrides[get_httpx_client] = lambda: mock_httpx_client

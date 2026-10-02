@@ -16,12 +16,11 @@ LOCK_POLL_SLEEP_S = 0.1
 
 SUB_PREFIX = 'sub'
 LOCK_PREFIX = 'lock'
-# Bumped from 'token_hash' in SET-1250: the cached value changed from a bare `sub` string to
-# a JSON {sub, email} object. A new prefix makes the two formats unable to meet during a
-# rolling deploy, rather than requiring every reader to tolerate both.
+# Was 'token_hash' (bare `sub`) before SET-1250. Now JSON {sub, email}; the new prefix keeps the
+# two formats apart during a rolling deploy.
 TOKEN_HASH_PREFIX = 'token_hash_v2'  # noqa: S105
 
-# identity / audience verification
+# identity verification
 TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo'
 TOKEN_CACHE_MAX_TTL_SECS = 3600  # never cache an identity longer than the access token's own lifetime
 

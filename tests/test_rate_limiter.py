@@ -11,10 +11,9 @@ from server.services.rate_limiter import DownloadRateLimiter
 
 
 def tokeninfo_response(**overrides: object) -> dict:
-    """Return a tokeninfo payload shaped the way oauth2.googleapis.com actually returns one.
+    """Return a tokeninfo payload shaped like oauth2.googleapis.com's.
 
-    Note every value is a string on the wire, including `email_verified` and `expires_in`. `aud` is
-    present because the endpoint returns it, not because the proxy checks it.
+    Every value is a string on the wire. `aud` is present but unchecked.
     """
     payload: dict[str, object] = {
         'sub': 'user123',
@@ -212,11 +211,7 @@ class TestDownloadRateLimiter:
         assert self.rate_limiter.verify_token_info(tokeninfo_response(email_verified=True))['sub'] == 'user123'
 
     def test_verify_ignores_the_audience(self):
-        """Test the proxy accepts a token minted for any OAuth client, including none at all.
-
-        Deliberate: anyone in the access map may read their buckets with any Google token they
-        hold. The access map, not the calling application, is the control.
-        """
+        """Test the proxy accepts a token minted for any OAuth client, including none at all."""
         assert self.rate_limiter.verify_token_info(tokeninfo_response(aud='9999-other.apps.googleusercontent.com'))
 
         payload = tokeninfo_response()

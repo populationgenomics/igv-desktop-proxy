@@ -78,10 +78,8 @@ class DownloadRateLimiter:
     async def resolve_user(self) -> str:
         """Establish who is calling, from their access token, and return their email address.
 
-        Sets user_sub (the key for budget and stats) and user_email (the key for the access map);
-        the email is returned because it is what the caller needs next, to authorize. Raises 401 if
-        either is unavailable — the proxy now acts on the caller's behalf with its own credentials,
-        so an unidentified caller can never be served.
+        Sets user_sub (budget and stats key) and user_email (access map key). Raises 401 if either is
+        missing: the proxy reads GCS with its own credentials, so an unidentified caller is never served.
         """
         token_hash = hashlib.sha256(self.user_token.encode('utf-8')).hexdigest()
 
@@ -143,9 +141,7 @@ class DownloadRateLimiter:
     async def fetch_token_info(self) -> dict | None:
         """Fetch token info from Google's tokeninfo endpoint.
 
-        tokeninfo rather than userinfo because one call returns the identity claims *and*
-        `expires_in`, which bounds how long the resolved identity may be cached. userinfo says
-        nothing about the token's own remaining lifetime.
+        Not userinfo: only tokeninfo returns `expires_in`, which bounds the identity cache TTL.
         """
         query_params = {'access_token': self.user_token}
 
@@ -159,13 +155,11 @@ class DownloadRateLimiter:
     def verify_token_info(self, token_info: dict) -> dict[str, str]:
         """Return the {sub, email} identity this token proves, or raise 401.
 
-        Every branch here refuses rather than degrades: the access map is keyed by email, so an
-        email the proxy cannot vouch for is worse than no email at all.
+        Refuses rather than degrades: the access map is keyed by email, so an unvouched email is worse
+        than none.
 
-        Deliberately not checked: `aud`, the OAuth client the token was issued to. Anyone listed in
-        the access map may read the buckets they are listed against with any Google token they
-        hold, not only one minted by IGV. Reaching the data outside IGV is not intended, but it is
-        accepted — the access map, not the calling application, is the control.
+        `aud` deliberately unchecked: a listed user may use any Google token, not only IGV's. Accepted,
+        since the access map, not the calling app, is the control.
         """
         if 'error' in token_info:
             logging.warning(f'tokeninfo rejected the access token: {token_info.get("error")}')

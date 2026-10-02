@@ -137,8 +137,7 @@ async def test_authorize_lets_the_503_through_untouched():
 async def test_unmetered_request_returns_no_limiter():
     """Test an unmetered request neither deducts budget nor hands a limiter to the streamer.
 
-    Handing it over would record a zero-byte download, which the nightly CSV export emits as an
-    empty row.
+    Handing it over would record a zero-byte download as an empty CSV row.
     """
     rate_limiter = make_rate_limiter(within_limits=True)
 

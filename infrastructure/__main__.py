@@ -230,9 +230,8 @@ cloud_run = gcp.cloudrunv2.Service(
                         name='REDIS_CERT_PATH',
                         value='/etc/secrets/redis/redis_ca.crt',
                     ),
-                    # The project holding the igv-proxy-config secret, which cpg-infrastructure
-                    # creates in this stack's own project (SET-1249). Explicit rather than inferred:
-                    # on a laptop, ADC would resolve to the developer's own project.
+                    # Project holding igv-proxy-config (SET-1249). Explicit, not inferred:
+                    # on a laptop, ADC resolves to the developer's own project.
                     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
                         name='IGV_PROXY_CONFIG_PROJECT',
                         value=_gcp_project,

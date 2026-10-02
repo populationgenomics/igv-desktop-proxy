@@ -117,11 +117,7 @@ class TestMainAPI:
     # --- identity --------------------------------------------------------------------------
 
     def test_token_from_another_oauth_client_is_accepted(self):
-        """Test the proxy serves any token the listed user holds, not only one IGV minted.
-
-        Reaching the data outside IGV is not intended, but it is accepted: the access map, not the
-        calling application, is the control.
-        """
+        """Test the proxy serves any token the listed user holds, not only one IGV minted."""
         self.transport.tokeninfo['aud'] = '9999-someone-else.apps.googleusercontent.com'
 
         response = self.proxy_api.get(INDEX_PATH, headers=CALLER_HEADERS)
@@ -271,11 +267,7 @@ class TestLifespan:
 
     @pytest.mark.usefixtures('proxy_env')
     def test_startup_fails_when_the_access_map_never_loads(self, mock_proxy_credentials: MagicMock):
-        """Test an unreadable secret fails the revision instead of 503ing every user.
-
-        Cloud Run keeps the previous revision serving, so a missing secret or a missing IAM binding
-        surfaces as a failed deploy.
-        """
+        """Test an unreadable secret fails the revision instead of 503ing every user."""
         broken_access_list = MagicMock()
         broken_access_list.load = AsyncMock(side_effect=PermissionError('secret is unreadable'))
 

@@ -10,9 +10,8 @@ CLOSED_BYTE_RANGE = re.compile(r'bytes=([0-9]+)-([0-9]+)', re.IGNORECASE)
 def get_byte_range(range_header: str) -> int | None:
     """Return the total bytes in a single closed `bytes=START-END` range, or None.
 
-    None covers every Range that has no exact byte count: open-ended (`bytes=1000-`), suffix
-    (`bytes=-500`), multi-range, unparseable, and START > END — that last would otherwise yield a
-    zero or negative count and credit the caller's budget.
+    None for open-ended (`bytes=1000-`), suffix (`bytes=-500`), multi-range, unparseable, and
+    START > END, which would otherwise credit the caller's budget.
     """
     match = CLOSED_BYTE_RANGE.fullmatch(range_header.strip())
     if match is None:
@@ -42,8 +41,7 @@ def get_headers(headers: Headers) -> dict[str, str]:
 def build_gcs_headers(inbound: dict[str, str], proxy_token: str) -> dict[str, str]:
     """Return the headers to send upstream: the inbound ones, with our own credentials.
 
-    Returns a fresh dict; `inbound` stays the record of what the caller actually sent. The
-    caller's token is only ever used to learn who they are, and must not reach GCS.
+    Returns a fresh dict. The caller's token only identifies them and must never reach GCS.
     """
     gcs_headers = {name: value for name, value in inbound.items() if name.lower() != 'authorization'}
     gcs_headers['Authorization'] = f'Bearer {proxy_token}'
