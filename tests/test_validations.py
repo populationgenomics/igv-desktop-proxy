@@ -82,6 +82,23 @@ def test_range_request_reserves_its_byte_count():
     assert resolve_request_bytes('file.cram.crai', 'bytes=0-999999') == 1000000  # noqa: PLR2004
 
 
+UNMETERABLE_RANGES = ['bytes=1000-', 'bytes=-500', 'bytes=0-1,5-6', 'bytes=200-100', 'foo']
+
+
+@pytest.mark.parametrize('range_header', UNMETERABLE_RANGES)
+def test_non_index_file_with_an_unmeterable_range_is_rejected(range_header: str):
+    """Test a data file whose Range has no exact byte count is a 400, never a 500."""
+    with pytest.raises(HTTPException) as exc:
+        resolve_request_bytes('file.cram', range_header)
+    assert exc.value.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.parametrize('range_header', UNMETERABLE_RANGES)
+def test_index_file_with_an_unmeterable_range_is_not_metered(range_header: str):
+    """Test an index file with an unmeterable Range is treated as if it sent none."""
+    assert resolve_request_bytes('file.cram.crai', range_header) is None
+
+
 @pytest.mark.asyncio
 async def test_authorize_allows_a_listed_user():
     """Test an authorized user passes the hop without an exception."""

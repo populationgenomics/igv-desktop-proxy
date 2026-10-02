@@ -99,7 +99,16 @@ def resolve_request_bytes(object_path: str, range_header: str | None) -> int | N
         # Reject the request if range is not specified as we can not rate-limit them otherwise
         raise HTTPException(HTTPStatus.BAD_REQUEST)
 
-    return get_byte_range(range_header)
+    request_bytes = get_byte_range(range_header)
+    if request_bytes is None:
+        # An index file is served whole anyway, so a Range we cannot meter is treated as none
+        if object_path.endswith(INDEX_FILE_SUFFIXES):
+            return None
+
+        # Anything without an exact byte count cannot be rate-limited either
+        raise HTTPException(HTTPStatus.BAD_REQUEST, detail='A single closed byte range (bytes=START-END) is required.')
+
+    return request_bytes
 
 
 async def rate_limit_if_applicable(

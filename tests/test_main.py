@@ -201,6 +201,14 @@ class TestMainAPI:
         response = self.proxy_api.get(DATA_PATH, headers=CALLER_HEADERS)
         assert response.status_code == HTTPStatus.BAD_REQUEST
 
+    def test_data_file_with_an_open_ended_range_is_rejected_without_consuming_budget(self):
+        """Test an open-ended Range on a data file is a 400 decided before any metering."""
+        response = self.proxy_api.get(DATA_PATH, headers={**CALLER_HEADERS, 'Range': 'bytes=1000-'})
+
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        self.redis_client.deduct_if_balance.assert_not_called()
+        assert self.transport.gcs_requests == []
+
     # --- HEAD ------------------------------------------------------------------------------
 
     def test_head_is_authorized_but_never_metered(self):
