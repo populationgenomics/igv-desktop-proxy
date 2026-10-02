@@ -138,3 +138,6 @@ dmypy.json
 # add files used for local development/testing and not committed to version control
 .local
 *.zip
+
+# SET-1250 design doc, kept locally rather than in the repo
+IMPLEMENTATION-PLAN.md

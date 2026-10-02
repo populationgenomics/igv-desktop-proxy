@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import time
 import uuid
@@ -11,12 +12,51 @@ from fastapi import HTTPException
 from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential_jitter
 
 from server.services.rate_limit_store import RateLimitRedisClient
-from server.utils.constants import LOCK_PREFIX, STATS_PREFIX, SUB_PREFIX, TOKEN_HASH_PREFIX
+from server.utils.constants import (
+    LOCK_PREFIX,
+    STATS_PREFIX,
+    SUB_PREFIX,
+    TOKEN_CACHE_MAX_TTL_SECS,
+    TOKEN_HASH_PREFIX,
+    TOKENINFO_URL,
+)
 from server.utils.helpers import is_none
+
+# tokeninfo serialises every value as a string, so `email_verified` arrives as 'true', not True.
+# Accept the genuine boolean too; anything else — 'false', '', absent — is not a verified email.
+TRUTHY_CLAIM_VALUES = (True, 'true', 'True')
+
+
+def decode_cached_identity(cached: str | None) -> dict[str, str] | None:
+    """Return the cached {sub, email} identity, or None if there is nothing usable cached."""
+    if cached is None:
+        return None
+
+    try:
+        identity = json.loads(cached)
+    except ValueError:
+        logging.warning('Discarding an unparseable cached identity.')
+        return None
+
+    if not isinstance(identity, dict) or not identity.get('sub') or not identity.get('email'):
+        logging.warning('Discarding an incomplete cached identity.')
+        return None
+
+    return {'sub': identity['sub'], 'email': identity['email']}
+
+
+def identity_cache_ttl(token_info: dict) -> int:
+    """Return how long to cache an identity: the token's own remaining life, capped at an hour."""
+    try:
+        expires_in = int(token_info.get('expires_in', TOKEN_CACHE_MAX_TTL_SECS))
+    except (TypeError, ValueError):
+        expires_in = TOKEN_CACHE_MAX_TTL_SECS
+
+    return max(1, min(expires_in, TOKEN_CACHE_MAX_TTL_SECS))
 
 
 class DownloadRateLimiter:
-    """Implements IGV desktop proxy rate limiting logic based on a fixed window."""
+    """Resolves the caller's identity and implements fixed-window download rate limiting."""
 
     def __init__(
         self,
@@ -31,72 +71,119 @@ class DownloadRateLimiter:
 
         self.user_token = user_token
         self.request_bytes = request_bytes  # bytes; IGV typically requests 512 KB per request (CRAM, BAM)
-        self.user_sub: str | None = None
 
-    async def check_user_limit(self) -> bool:
-        """Validate user and check their download limits."""
+        self.user_sub: str | None = None
+        self.user_email: str | None = None
+
+    async def resolve_user(self) -> str:
+        """Establish who is calling, from their access token, and return their email address.
+
+        Sets user_sub (budget and stats key) and user_email (access map key). Raises 401 if either is
+        missing: the proxy reads GCS with its own credentials, so an unidentified caller is never served.
+        """
         token_hash = hashlib.sha256(self.user_token.encode('utf-8')).hexdigest()
 
         try:
-            self.user_sub = await self.get_authenticated_user_id(token_hash)
+            identity = await self.get_authenticated_identity(token_hash)
         except tenacity.RetryError as err:
-            logging.error(f'Failed to get user info after retrying. {err}')
-            self.user_sub = None
+            logging.error(f'Failed to get token info after retrying. {err}')
+            identity = None
 
-        if self.user_sub is None:
+        if identity is None:
             raise HTTPException(HTTPStatus.UNAUTHORIZED)
 
-        return await self.evaluate_download_limits()
+        self.user_sub = identity['sub']
+        self.user_email = identity['email']
+        return self.user_email
 
     @retry(retry=retry_if_result(is_none), wait=wait_exponential_jitter(initial=1, max=16), stop=stop_after_attempt(5))
-    async def get_authenticated_user_id(self, token_hash: str) -> str | None:
-        """Check cache or external service to validate the user access token."""
+    async def get_authenticated_identity(self, token_hash: str) -> dict[str, str] | None:
+        """Check cache or Google's tokeninfo endpoint to resolve the user's access token."""
         # Already cached.
         token_key = f'{TOKEN_HASH_PREFIX}:{token_hash}'
-        user_sub = await self.redis_client.get(token_key)
-        if user_sub is not None:
-            return user_sub
+        identity = decode_cached_identity(await self.redis_client.get(token_key))
+        if identity is not None:
+            return identity
 
         lock_key = f'{LOCK_PREFIX}:{token_hash}'
 
         # Try to acquire the lock
-        # Only one request is allowed to invoke userinfo endpoint if there are concurrent requests with the same token
+        # Only one request is allowed to invoke tokeninfo endpoint if there are concurrent requests with the same token
         request_uuid = uuid.uuid4()
         acquired = await self.redis_client.set(lock_key, request_uuid.bytes, nx=True, ex=10)
 
         if acquired:
             # recheck after lock acquisition
-            user_sub = await self.redis_client.get(token_key)
-            if user_sub is not None:
-                return user_sub
+            identity = decode_cached_identity(await self.redis_client.get(token_key))
+            if identity is not None:
+                return identity
             try:
-                user_info = await self.fetch_user_info()
-                if user_info:
-                    user_sub = user_info.get('sub')
-                    await self.redis_client.set(
-                        token_key,
-                        user_sub,
-                        ex=3600,
-                        nx=True,
-                    )  # expire this key after 1-hour. Mirror expiry time of the access token
-                    return user_sub
+                token_info = await self.fetch_token_info()
+                if token_info is None:
+                    # A transport failure, not a verdict on the token. Worth another attempt.
+                    return None
+
+                # Raises 401 on a token this proxy must not act on. Nothing is cached in that case:
+                # the only value ever written here is a complete, verified identity.
+                identity = self.verify_token_info(token_info)
+                await self.redis_client.set(
+                    token_key,
+                    json.dumps(identity),
+                    ex=identity_cache_ttl(token_info),
+                    nx=True,
+                )
+                return identity
             finally:
                 await self.redis_client.release_lock(lock_key, request_uuid)
 
         return None
 
-    async def fetch_user_info(self) -> dict | None:
-        """Fetch user info from Google's userinfo endpoint."""
-        url = 'https://www.googleapis.com/oauth2/v3/userinfo'
+    async def fetch_token_info(self) -> dict | None:
+        """Fetch token info from Google's tokeninfo endpoint.
 
+        Not userinfo: only tokeninfo returns `expires_in`, which bounds the identity cache TTL.
+        """
         query_params = {'access_token': self.user_token}
 
         try:
-            response = await self.http_client.get(url, params=query_params)
+            response = await self.http_client.get(TOKENINFO_URL, params=query_params)
             return response.json()
-        except httpx.HTTPError as err:
-            logging.error(f'Failed to fetch user info. {err}')
+        except (httpx.HTTPError, ValueError) as err:
+            logging.error(f'Failed to fetch token info. {err}')
             return None
+
+    def verify_token_info(self, token_info: dict) -> dict[str, str]:
+        """Return the {sub, email} identity this token proves, or raise 401.
+
+        Refuses rather than degrades: the access map is keyed by email, so an unvouched email is worse
+        than none.
+
+        `aud` deliberately unchecked: a listed user may use any Google token, not only IGV's. Accepted,
+        since the access map, not the calling app, is the control.
+        """
+        if 'error' in token_info:
+            logging.warning(f'tokeninfo rejected the access token: {token_info.get("error")}')
+            raise HTTPException(HTTPStatus.UNAUTHORIZED)
+
+        email = token_info.get('email')
+        if not email:
+            logging.error(
+                'tokeninfo returned no email claim. The user consented without the email scope, or — if this '
+                'is happening for every request — IGV is not being provisioned with the email scope at all.',
+            )
+            raise HTTPException(HTTPStatus.UNAUTHORIZED)
+
+        email_verified = token_info.get('email_verified')
+        if email_verified not in TRUTHY_CLAIM_VALUES:
+            logging.error(f'Refusing an unverified email address. email_verified={email_verified!r}')
+            raise HTTPException(HTTPStatus.UNAUTHORIZED)
+
+        sub = token_info.get('sub')
+        if not sub:
+            logging.error('tokeninfo returned no sub claim; download budget and stats cannot be attributed.')
+            raise HTTPException(HTTPStatus.UNAUTHORIZED)
+
+        return {'sub': sub, 'email': email}
 
     async def evaluate_download_limits(self) -> bool:
         """Deduct the requested byte size from the user's download budget if quota not exceeded."""
