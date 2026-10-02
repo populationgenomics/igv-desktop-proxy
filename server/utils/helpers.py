@@ -26,6 +26,17 @@ def get_headers(headers: Headers) -> dict[str, str]:
     return _headers
 
 
+def build_gcs_headers(inbound: dict[str, str], proxy_token: str) -> dict[str, str]:
+    """Return the headers to send upstream: the inbound ones, with our own credentials.
+
+    Returns a fresh dict; `inbound` stays the record of what the caller actually sent. The
+    caller's token is only ever used to learn who they are, and must not reach GCS.
+    """
+    gcs_headers = {name: value for name, value in inbound.items() if name.lower() != 'authorization'}
+    gcs_headers['Authorization'] = f'Bearer {proxy_token}'
+    return gcs_headers
+
+
 def is_none(value: Any) -> bool:
     """Return True if value is None."""
     return value is None
