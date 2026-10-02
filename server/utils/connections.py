@@ -44,8 +44,7 @@ def get_proxy_credentials(request: Request) -> ProxyCredentials:
 def read_config_project_id() -> str:
     """Return the GCP project holding the igv-proxy-config secret.
 
-    Required, and deliberately not inferred: on a laptop, application default credentials resolve
-    to the developer's own gcloud project, which would silently be the wrong secret.
+    Required, not inferred: on a laptop, ADC resolves to the developer's own project — the wrong secret.
     """
     project_id = os.environ.get(IGV_PROXY_CONFIG_PROJECT_ENV, '').strip()
     if not project_id:

@@ -44,11 +44,8 @@ def validate_auth(headers: dict) -> str:
 def forbidden_detail(bucket: str) -> str:
     """Return the 403 body.
 
-    403 is the ordinary answer for a new external collaborator until their PR lands, so it has to
-    route them to the fix rather than just refuse. Naming the bucket discloses nothing — the caller
-    typed it, and this says nothing about whether it exists. The dataset name is deliberately not
-    derived from it: the storage prefix is configurable, and a wrong dataset name here is worse
-    than none.
+    Routes new collaborators to the fix. Naming the bucket discloses nothing (the caller typed it);
+    no dataset name, since the storage prefix is configurable and a wrong one is worse than none.
     """
     return (
         f'Not authorized to read bucket `{bucket}`. If you hold personal IAM on this bucket, use '
@@ -61,8 +58,7 @@ def forbidden_detail(bucket: str) -> str:
 async def authorize_bucket_access(access_list: IgvProxyAccessList, email: str, bucket: str) -> None:
     """Refuse the request unless this user is listed against this bucket.
 
-    Raises 403 when the user is known but not permitted, and 503 (from the access list itself) when
-    no access map has ever loaded — the two must never be confused for one another.
+    Raises 403 if not permitted, or 503 (from the access list) if no map has ever loaded.
     """
     if await access_list.is_allowed(email, bucket):
         return
@@ -117,11 +113,8 @@ async def rate_limit_if_applicable(
 ) -> DownloadRateLimiter | None:
     """Charge this request against the user's download budget, if it is a metered request.
 
-    Returns the limiter to hand to GCSStreamer, or None for an unmetered request. Handing the
-    limiter over anyway would call record_download_stats with request_bytes=0, writing zero-valued
-    dl_stats keys that the nightly CSV exporter would emit as empty rows.
-
-    The caller must have authorized the request first: a refused request must not consume budget.
+    Returns the limiter for GCSStreamer, or None if unmetered — handing it over would record
+    zero-byte dl_stats rows. The caller must authorize first.
     """
     if request_bytes is None:
         return None

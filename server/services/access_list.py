@@ -17,10 +17,8 @@ from server.utils.constants import (
     IGV_PROXY_CONFIG_SECRET_ID,
 )
 
-# Errors that mean "this refresh did not work", as opposed to a bug in this process. A refresh
-# failure is survivable while a previous map is in hand, so these are caught; anything else is not.
-# GoogleAuthError is separate from GoogleAPIError and covers the credential side — a metadata
-# server blip fails the refresh without the API ever being reached.
+# Refresh failures, survivable while a previous map is in hand; anything else is a bug.
+# GoogleAuthError isn't a GoogleAPIError: it covers credential failures like a metadata-server blip.
 REFRESH_ERRORS = (GoogleAPIError, GoogleAuthError, ValueError, OSError)
 
 
@@ -125,9 +123,7 @@ class IgvProxyAccessList:
     async def _refresh_if_stale(self) -> None:
         """Refetch the access map if its TTL has lapsed.
 
-        Refresh is tied to traffic rather than a background timer: Cloud Run scales to zero and
-        does not guarantee CPU outside a request, so a timer fires unreliably or on an instance
-        about to be reclaimed.
+        On traffic, not a timer: Cloud Run scales to zero and doesn't guarantee CPU outside a request.
         """
         if self._clock() < self._expires_at:
             return

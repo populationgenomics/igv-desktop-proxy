@@ -86,16 +86,13 @@ async def proxy_handler_metadata(  # noqa: PLR0913  # each argument is an inject
     access_list: IgvProxyAccessList = Depends(get_access_list),
     proxy_credentials: ProxyCredentials = Depends(get_proxy_credentials),
 ):
-    """Proxy metadata requests to GCS. Rate limit logics are bypassed: a HEAD transfers no bytes.
+    """Proxy metadata requests to GCS. Unmetered, since a HEAD transfers no bytes.
 
-    It is still authorized. This request is served with the proxy's own credentials, so without an
-    authorize hop a HEAD would leak the existence and size of any object the service account can
-    reach — for every bucket, to anyone holding any Google token.
+    Still authorized: served with the proxy's own credentials, an unauthorized HEAD would leak the
+    existence and size of any object the service account can reach.
 
-    The DownloadRateLimiter built here exists purely to call resolve_user(), which is where
-    identity resolution lives. It is deliberately not handed to GCSStreamer: that would call
-    record_download_stats with request_bytes=0, writing zero-valued dl_stats keys that the nightly
-    CSV exporter would emit as empty rows.
+    The limiter only resolves identity. It is not handed to GCSStreamer, which would record
+    zero-byte dl_stats rows.
     """
     bucket, object_path = validate_and_parse_path(full_path)
     headers = get_headers(request.headers)
@@ -140,8 +137,7 @@ async def proxy_handler(  # noqa: PLR0913  # each argument is an injected depend
 ):
     """Proxy requests to GCS.
 
-    Resolve who is calling, authorize them against the access map, then meter. Authorizing before
-    metering matters: a refused request must never consume the caller's download budget.
+    Authorize before metering, so a refused request never consumes the caller's budget.
     """
     bucket, object_path = validate_and_parse_path(full_path)
     headers = get_headers(request.headers)
@@ -160,9 +156,8 @@ async def proxy_handler(  # noqa: PLR0913  # each argument is an injected depend
     user_email = await rate_limiter.resolve_user()
     await authorize_bucket_access(access_list, user_email, bucket)
 
-    # Before metering, not after: everything between the deduction and stream_from_gcs's own
-    # try/except is budget the caller would lose for an hour if it raised. The token is cached, so
-    # a request that goes on to 429 costs nothing here.
+    # Before metering: a raise after the deduction costs the caller an hour of budget.
+    # The token is cached, so a request that then 429s costs nothing here.
     gcs_headers = build_gcs_headers(headers, await proxy_credentials.get_token())
 
     metered_rate_limiter = await rate_limit_if_applicable(rate_limiter, request_bytes)

@@ -167,8 +167,7 @@ class TestIgvProxyAccessList:
     async def test_credential_failure_on_refresh_serves_the_last_good_map(self):
         """Test a metadata-server blip is a refresh failure, not a 500.
 
-        Credential errors are a separate hierarchy from API errors, so they have to be named
-        explicitly or they escape the refresh guard entirely.
+        GoogleAuthError isn't a GoogleAPIError, so it must be caught explicitly.
         """
         client = mock_secret_client(
             secret_payload({'alice@example.com': ['cpg-fewgenomes-main']}),
