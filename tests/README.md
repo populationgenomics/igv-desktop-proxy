@@ -15,22 +15,23 @@ uv run pytest tests/
 The unit tests mock Google. This checks the real wiring: tokeninfo, the `igv-proxy-config` secret,
 the proxy service account's bucket IAM and GCS itself. It runs the proxy locally as the dev proxy
 service account, so you need `gcloud`, `docker` and `jq`, and permission to grant IAM on that
-service account and the bucket under test.
+service account and the buckets under test.
 
 ### 1. Set up (once)
 
 ```bash
 export DEV_PROJECT=<dev proxy project>          # the PULUMI_CONFIG_GCP_PROJECT secret
-export BUCKET=cpg-fewgenomes-test
+export BUCKETS="cpg-fewgenomes-test app-test-data-bucket"   # optional; this is the default
+export BUCKET=cpg-fewgenomes-test               # the one of BUCKETS that smoke.sh checks
 export CRAM=cram/<sample>.cram                   # path inside BUCKET, no bucket prefix; .crai beside it
 export UNREADABLE_BUCKET=<bucket you can read but the proxy SA cannot>   # optional
 
 bash tests/manual/setup.sh
 ```
 
-This lets you impersonate the dev proxy service account, grants it read on `BUCKET`, adds you to
-the dev access map, and points your application default credentials at the service account. It
-prints a command to restore the access map afterwards. Keep it.
+This lets you impersonate the dev proxy service account, grants it read on each of `BUCKETS`, adds
+you to the dev access map for them, and points your application default credentials at the service
+account. It prints a command to restore the access map afterwards. Keep it.
 
 ### 2. Start the proxy
 
@@ -47,15 +48,18 @@ In a second terminal, with the same variables exported:
 bash tests/manual/smoke.sh
 ```
 
-Every line should read `PASS`. Then load the CRAM through IGV Desktop (see the main
-[README](../README.md#testing-the-igv-desktop-python-proxy-locally)) and check reads appear.
+Every line should read `PASS`. To check another bucket, rerun with `BUCKET` and `CRAM` pointing
+at it, e.g. `BUCKET=app-test-data-bucket CRAM=<path> bash tests/manual/smoke.sh`. Then load the
+CRAM through IGV Desktop (see the main [README](../README.md#testing-the-igv-desktop-python-proxy-locally)) and check reads appear.
 
 ### 4. Clean up
 
 ```bash
 <restore command printed by setup.sh>
-gcloud storage buckets remove-iam-policy-binding gs://$BUCKET \
-    --member=serviceAccount:igv-desktop-proxy-dev@$DEV_PROJECT.iam.gserviceaccount.com --role=roles/storage.objectViewer
+for bucket in ${BUCKETS:-cpg-fewgenomes-test app-test-data-bucket}; do
+    gcloud storage buckets remove-iam-policy-binding gs://$bucket \
+        --member=serviceAccount:igv-desktop-proxy-dev@$DEV_PROJECT.iam.gserviceaccount.com --role=roles/storage.objectViewer
+done
 gcloud auth application-default login           # back to your own credentials
 docker rm -f igv-dsk-proxy-test
 ```
