@@ -1,5 +1,4 @@
-from collections.abc import AsyncGenerator, Callable, Generator
-from http import HTTPStatus
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -18,66 +17,9 @@ from server.utils.connections import (
     get_proxy_credentials,
     get_redis_client,
 )
+from tests.helpers import PROXY_TOKEN, ProxyTransport
 
 CONFIG_PROJECT = 'cpg-igv-proxy-test'
-PROXY_TOKEN = 'proxy-sa-token'  # noqa: S105
-TOKENINFO_HOST = 'oauth2.googleapis.com'
-
-
-class SingleChunkStream(httpx.AsyncByteStream):
-    """An unconsumed response body, which is what the proxy's streaming path needs to iterate."""
-
-    def __init__(self, data: bytes) -> None:
-        """Hold the bytes to yield."""
-        self._data = data
-
-    async def __aiter__(self) -> AsyncGenerator[bytes, None]:
-        """Yield the whole body as one chunk."""
-        yield self._data
-
-
-def streaming_response(status: HTTPStatus, data: bytes = b'', **kwargs: object) -> httpx.Response:
-    """Return a mock response the proxy can stream, rather than one httpx marks as already read."""
-    return httpx.Response(status, stream=SingleChunkStream(data), **kwargs)  # type: ignore[arg-type]
-
-
-class ProxyTransport(httpx.MockTransport):
-    """A mock transport standing in for everything the proxy talks to over HTTP.
-
-    Routes tokeninfo vs GCS by host and records every request, so tests can assert nothing reached
-    GCS when a request was refused.
-    """
-
-    def __init__(self) -> None:
-        """Start with a valid token and a successful GCS response.
-
-        `aud` and `scope` mirror real tokeninfo output; the proxy doesn't check them.
-        """
-        super().__init__(self._handle)
-        self.requests: list[httpx.Request] = []
-        self.tokeninfo: dict = {
-            'sub': 'user123',
-            'email': 'alice@example.com',
-            'email_verified': 'true',
-            'aud': '1234-abc.apps.googleusercontent.com',
-            'scope': 'openid email',
-            'expires_in': '3599',
-        }
-        self.gcs_handler: Callable[[httpx.Request], httpx.Response] = lambda _request: streaming_response(
-            HTTPStatus.OK,
-            b'fake data',
-        )
-
-    def _handle(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        if request.url.host == TOKENINFO_HOST:
-            return httpx.Response(HTTPStatus.OK, json=self.tokeninfo)
-        return self.gcs_handler(request)
-
-    @property
-    def gcs_requests(self) -> list[httpx.Request]:
-        """Return only the requests the proxy sent upstream to GCS."""
-        return [request for request in self.requests if request.url.host != TOKENINFO_HOST]
 
 
 @pytest.fixture

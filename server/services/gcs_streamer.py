@@ -8,14 +8,7 @@ from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from server.services.rate_limiter import DownloadRateLimiter
-
-# Upstream statuses that are a legitimate answer to the user's question, rather than a fault in
-# the proxy's own access. Everything else — notably 401/403/5xx — becomes a 502, because after the
-# credential swap an upstream refusal means this proxy's IAM is broken and must be alertable.
-PASS_THROUGH_STATUSES: dict[int, str] = {
-    HTTPStatus.NOT_FOUND: 'Object not found.',
-    HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE: 'Requested range not satisfiable.',
-}
+from server.utils.constants import PASS_THROUGH_STATUSES, UPSTREAM_FAILED_DETAIL
 
 
 def map_upstream_error(upstream_status: int) -> tuple[int, str]:
@@ -23,7 +16,7 @@ def map_upstream_error(upstream_status: int) -> tuple[int, str]:
     detail = PASS_THROUGH_STATUSES.get(upstream_status)
     if detail is not None:
         return upstream_status, detail
-    return HTTPStatus.BAD_GATEWAY.value, 'Upstream storage request failed.'
+    return HTTPStatus.BAD_GATEWAY.value, UPSTREAM_FAILED_DETAIL
 
 
 class GCSStreamer:
@@ -83,13 +76,13 @@ class GCSStreamer:
                     f'HTTP error {upstream_status} while requesting {exc.request.url!r}. '
                     f'Upstream body: {exc.response.text}',
                 )
-                # Never relay the upstream body. The only principal GCS sees is this proxy's own
-                # service account, so its error XML names that account and confirms the bucket exists.
+                # Never relay the upstream body: it names the proxy's service account
                 status, detail = map_upstream_error(upstream_status)
                 raise HTTPException(status_code=status, detail=detail) from exc
             if isinstance(exc, httpx.RequestError):
                 logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
-                raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR) from exc
+                # GCS unreachable or timed out: an upstream failure, so the same alertable 502
+                raise HTTPException(status_code=HTTPStatus.BAD_GATEWAY, detail=UPSTREAM_FAILED_DETAIL) from exc
 
             logging.error(f'Unexpected error: {exc}')
             raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR) from exc

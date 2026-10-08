@@ -6,39 +6,27 @@ from collections.abc import Callable
 from http import HTTPStatus
 
 from fastapi import HTTPException
-from google.api_core.exceptions import GoogleAPIError
-from google.auth.exceptions import GoogleAuthError
 from google.cloud.secretmanager_v1 import SecretManagerServiceAsyncClient
 from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential_jitter
 
 from server.utils.constants import (
     ACCESS_LIST_LOAD_ATTEMPTS,
+    ACCESS_LIST_LOAD_BACKOFF_INITIAL_SECS,
+    ACCESS_LIST_LOAD_BACKOFF_MAX_SECS,
+    ACCESS_LIST_RETRY_BACKOFF_SECS,
     ACCESS_LIST_TTL_SECS,
     IGV_PROXY_CONFIG_SECRET_ID,
+    REFRESH_ERRORS,
 )
-
-# Refresh failures, survivable while a previous map is in hand; anything else is a bug.
-# GoogleAuthError isn't a GoogleAPIError: it covers credential failures like a metadata-server blip.
-REFRESH_ERRORS = (GoogleAPIError, GoogleAuthError, ValueError, OSError)
 
 
 def normalise_email(email: str) -> str:
-    """Return the form of an email used as an access map key.
-
-    Both the parse and the lookup go through here: the secret derives from hand-written YAML, so
-    `Alice@example.com` must not silently fail to match, and the two sides must never drift.
-    """
+    """Return the canonical form of an email, used for both access map keys and lookups."""
     return email.strip().lower()
 
 
 def parse_access_map(payload: bytes) -> dict[str, frozenset[str]]:
-    """Parse the igv-proxy-config secret payload into an email -> buckets map.
-
-    The payload shape is fixed by SET-1249: {"users": {"<email>": ["<bucket>", ...]}}.
-
-    Raises ValueError on any shape that is not that, so a corrupt secret fails loudly rather than
-    parsing to an empty map that looks exactly like "nobody is listed".
-    """
+    """Parse the {"users": {email: [bucket, ...]}} secret payload, raising ValueError on any other shape."""
     document = json.loads(payload)
     if not isinstance(document, dict):
         raise ValueError('Access map payload is not a JSON object.')
@@ -57,12 +45,7 @@ def parse_access_map(payload: bytes) -> dict[str, frozenset[str]]:
 
 
 class IgvProxyAccessList:
-    """The set of (user, bucket) pairs this proxy will serve, read from Secret Manager.
-
-    Absent is modelled separately from empty. A map that has never loaded is not a map in which
-    nobody is listed: the first refuses with 503, the second refuses with 403. Collapsing them
-    would make a failed first fetch look exactly like correct enforcement.
-    """
+    """The (user, bucket) pairs this proxy will serve, read from Secret Manager. Never loaded is not empty."""
 
     def __init__(
         self,
@@ -87,24 +70,20 @@ class IgvProxyAccessList:
         return f'projects/{self._project_id}/secrets/{IGV_PROXY_CONFIG_SECRET_ID}/versions/latest'
 
     async def load(self) -> None:
-        """Fetch the access map eagerly at startup, with a bounded retry.
-
-        Raises if it never succeeds, so a missing secret or a missing IAM binding fails the Cloud
-        Run revision — the previous one keeps serving — rather than 503ing every user.
-        """
+        """Fetch the access map at startup with a bounded retry, raising so a bad config fails the deploy."""
         retrying = AsyncRetrying(
             stop=stop_after_attempt(ACCESS_LIST_LOAD_ATTEMPTS),
-            wait=wait_exponential_jitter(initial=1, max=8),
+            wait=wait_exponential_jitter(
+                initial=ACCESS_LIST_LOAD_BACKOFF_INITIAL_SECS,
+                max=ACCESS_LIST_LOAD_BACKOFF_MAX_SECS,
+            ),
             reraise=True,
         )
         await retrying(self._refresh)
         logging.info(f'Loaded the IGV proxy access map from {self.secret_version_name}.')
 
     async def is_allowed(self, email: str, bucket: str) -> bool:
-        """Return whether this user may read this bucket through the proxy.
-
-        Raises 503 if no map has ever loaded — fail closed, and say so distinguishably.
-        """
+        """Return whether this user may read this bucket. Raises 503 if no map has ever loaded."""
         await self._refresh_if_stale()
 
         if self._users is None:
@@ -121,10 +100,7 @@ class IgvProxyAccessList:
         await self._client.transport.close()
 
     async def _refresh_if_stale(self) -> None:
-        """Refetch the access map if its TTL has lapsed.
-
-        On traffic, not a timer: Cloud Run scales to zero and doesn't guarantee CPU outside a request.
-        """
+        """Refetch the access map if its TTL has lapsed. On traffic, as Cloud Run has no CPU between requests."""
         if self._clock() < self._expires_at:
             return
 
@@ -136,6 +112,8 @@ class IgvProxyAccessList:
             try:
                 await self._refresh()
             except REFRESH_ERRORS as exc:
+                # Back off, or every request queued on the lock would refetch in turn
+                self._expires_at = self._clock() + ACCESS_LIST_RETRY_BACKOFF_SECS
                 if self._users is None:
                     logging.error(f'Failed to load the IGV proxy access map: {exc!r}')
                     return

@@ -1,18 +1,12 @@
-import re
 from typing import Any
 
 from starlette.datastructures import Headers
 
-# A single closed range, the only form whose byte count is known before the response arrives.
-CLOSED_BYTE_RANGE = re.compile(r'bytes=([0-9]+)-([0-9]+)', re.IGNORECASE)
+from server.utils.constants import CLOSED_BYTE_RANGE
 
 
 def get_byte_range(range_header: str) -> int | None:
-    """Return the total bytes in a single closed `bytes=START-END` range, or None.
-
-    None for open-ended (`bytes=1000-`), suffix (`bytes=-500`), multi-range, unparseable, and
-    START > END, which would otherwise credit the caller's budget.
-    """
+    """Return the total bytes in a single closed `bytes=START-END` range (START <= END), or None."""
     match = CLOSED_BYTE_RANGE.fullmatch(range_header.strip())
     if match is None:
         return None
@@ -39,10 +33,7 @@ def get_headers(headers: Headers) -> dict[str, str]:
 
 
 def build_gcs_headers(inbound: dict[str, str], proxy_token: str) -> dict[str, str]:
-    """Return the headers to send upstream: the inbound ones, with our own credentials.
-
-    Returns a fresh dict. The caller's token only identifies them and must never reach GCS.
-    """
+    """Return a copy of the inbound headers with the caller's token replaced by the proxy's own."""
     gcs_headers = {name: value for name, value in inbound.items() if name.lower() != 'authorization'}
     gcs_headers['Authorization'] = f'Bearer {proxy_token}'
     return gcs_headers

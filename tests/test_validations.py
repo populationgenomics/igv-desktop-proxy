@@ -5,9 +5,10 @@ import pytest
 from fastapi import HTTPException
 
 from server.services.rate_limiter import DownloadRateLimiter
+from server.utils.constants import FORBIDDEN_DETAIL
 from server.utils.validation import (
+    apply_rate_limit,
     authorize_bucket_access,
-    rate_limit_if_applicable,
     resolve_request_bytes,
     validate_and_parse_path,
     validate_auth,
@@ -109,8 +110,8 @@ async def test_authorize_allows_a_listed_user():
 
 
 @pytest.mark.asyncio
-async def test_authorize_raises_403_naming_the_bucket_and_the_fix():
-    """Test the 403 is self-service: it names the bucket and the PR that grants access."""
+async def test_authorize_raises_403_with_a_generic_detail():
+    """Test the 403 points the caller at their data contact without exposing how access is granted."""
     access_list = MagicMock()
     access_list.is_allowed = AsyncMock(return_value=False)
 
@@ -118,8 +119,8 @@ async def test_authorize_raises_403_naming_the_bucket_and_the_fix():
         await authorize_bucket_access(access_list, 'alice@example.com', 'cpg-fewgenomes-main')
 
     assert exc.value.status_code == HTTPStatus.FORBIDDEN
-    assert 'cpg-fewgenomes-main' in exc.value.detail
-    assert 'igv-desktop-access' in exc.value.detail
+    assert exc.value.detail == FORBIDDEN_DETAIL
+    assert 'cpg-infrastructure-private' not in exc.value.detail
 
 
 @pytest.mark.asyncio
@@ -134,23 +135,23 @@ async def test_authorize_lets_the_503_through_untouched():
 
 
 @pytest.mark.asyncio
-async def test_unmetered_request_returns_no_limiter():
-    """Test an unmetered request neither deducts budget nor hands a limiter to the streamer.
+async def test_unmetered_request_is_not_charged():
+    """Test an unmetered request neither deducts budget nor reports itself metered.
 
-    Handing it over would record a zero-byte download as an empty CSV row.
+    Handing the limiter to the streamer would record a zero-byte download as an empty CSV row.
     """
     rate_limiter = make_rate_limiter(within_limits=True)
 
-    assert await rate_limit_if_applicable(rate_limiter, None) is None
+    assert await apply_rate_limit(rate_limiter, None) is False
     rate_limiter.evaluate_download_limits.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_metered_request_deducts_and_returns_the_limiter():
-    """Test a metered request within budget proceeds with its limiter attached."""
+async def test_metered_request_deducts_and_reports_metered():
+    """Test a metered request within budget is charged and reported as metered."""
     rate_limiter = make_rate_limiter(within_limits=True)
 
-    assert await rate_limit_if_applicable(rate_limiter, 512_000) is rate_limiter
+    assert await apply_rate_limit(rate_limiter, 512_000) is True
     rate_limiter.evaluate_download_limits.assert_awaited_once()
 
 
@@ -160,5 +161,5 @@ async def test_raise_error_when_rate_limit_exceeded():
     rate_limiter = make_rate_limiter(within_limits=False)
 
     with pytest.raises(HTTPException) as exc:
-        await rate_limit_if_applicable(rate_limiter, 512_000)
+        await apply_rate_limit(rate_limiter, 512_000)
     assert exc.value.status_code == HTTPStatus.TOO_MANY_REQUESTS

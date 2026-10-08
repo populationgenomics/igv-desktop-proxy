@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from pytest_asyncio import fixture
 
 from server.main import app
-from tests.conftest import PROXY_TOKEN, ProxyTransport
+from server.utils.constants import FORBIDDEN_DETAIL
+from tests.helpers import PROXY_TOKEN, ProxyTransport
 
 CALLER_HEADERS = {'Authorization': 'Bearer token123'}
 INDEX_PATH = '/mybucket/path/to/file.cram.crai'
@@ -83,13 +84,12 @@ class TestMainAPI:
         assert self.transport.gcs_requests == []
 
     def test_403_body_tells_the_caller_how_to_get_access(self):
-        """Test the refusal is self-service, since it is the normal answer for a new collaborator."""
+        """Test the refusal points the caller at their data contact, without internal details."""
         self.access_list.is_allowed = AsyncMock(return_value=False)
 
         response = self.proxy_api.get(DATA_PATH, headers={**CALLER_HEADERS, 'Range': 'bytes=0-1023'})
 
-        assert 'mybucket' in response.text
-        assert 'igv-desktop-access' in response.text
+        assert response.json()['detail'] == FORBIDDEN_DETAIL
 
     def test_authorization_is_checked_against_the_resolved_email(self):
         """Test the access map is consulted with the verified email and the requested bucket."""
@@ -116,21 +116,13 @@ class TestMainAPI:
 
     # --- identity --------------------------------------------------------------------------
 
-    def test_token_from_another_oauth_client_is_accepted(self):
-        """Test the proxy serves any token the listed user holds, not only one IGV minted."""
-        self.transport.tokeninfo['aud'] = '9999-someone-else.apps.googleusercontent.com'
-
-        response = self.proxy_api.get(INDEX_PATH, headers=CALLER_HEADERS)
-
-        assert response.status_code == HTTPStatus.OK
-
-    @pytest.mark.parametrize('email_verified', ['false', None])
-    def test_unverified_email_is_refused(self, email_verified: str | None):
+    @pytest.mark.parametrize('email_verified', [False, None])
+    def test_unverified_email_is_refused(self, email_verified: bool | None):
         """Test an email the proxy cannot vouch for is refused, false and absent alike."""
         if email_verified is None:
-            del self.transport.tokeninfo['email_verified']
+            del self.transport.userinfo['email_verified']
         else:
-            self.transport.tokeninfo['email_verified'] = email_verified
+            self.transport.userinfo['email_verified'] = email_verified
 
         response = self.proxy_api.get(INDEX_PATH, headers=CALLER_HEADERS)
 
@@ -139,7 +131,7 @@ class TestMainAPI:
 
     def test_token_without_an_email_claim_is_refused(self):
         """Test a token carrying a sub but no email cannot be authorized against an email-keyed map."""
-        del self.transport.tokeninfo['email']
+        del self.transport.userinfo['email']
 
         response = self.proxy_api.get(INDEX_PATH, headers=CALLER_HEADERS)
 
@@ -147,8 +139,8 @@ class TestMainAPI:
         assert self.transport.gcs_requests == []
 
     def test_invalid_token_is_refused_without_caching_none(self):
-        """Test a token tokeninfo rejects 401s, and writes nothing into the identity cache."""
-        self.transport.tokeninfo = {'error': 'invalid_token'}
+        """Test a token userinfo rejects 401s, and writes nothing into the identity cache."""
+        self.transport.userinfo = {'error': 'invalid_request', 'error_description': 'Invalid Credentials'}
 
         response = self.proxy_api.get(INDEX_PATH, headers=CALLER_HEADERS)
 

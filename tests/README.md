@@ -12,7 +12,7 @@ uv run pytest tests/
 
 ## Manual end-to-end test
 
-The unit tests mock Google. This checks the real wiring: tokeninfo, the `igv-proxy-config` secret,
+The unit tests mock Google. This checks the real wiring: userinfo, the `igv-proxy-config` secret,
 the proxy service account's bucket IAM and GCS itself. It runs the proxy locally as the dev proxy
 service account, so you need `gcloud`, `docker` and `jq`, and permission to grant IAM on that
 service account and the buckets under test.

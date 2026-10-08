@@ -52,7 +52,7 @@ class TestGCSStreamer:
                 query_params={},
                 bucket_name='bucket',
             )
-        assert exc.value.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+        assert exc.value.status_code == HTTPStatus.BAD_GATEWAY
         await client.aclose()
         mock_download_rate_limiter.refund.assert_called_once()
 
@@ -127,7 +127,7 @@ class TestGCSStreamer:
 
     @pytest.mark.asyncio
     async def test_stream_from_gcs_request_error(self, mock_download_rate_limiter: MagicMock):
-        """Test raises HTTP 500 when a network-level RequestError occurs."""
+        """Test raises HTTP 502 when a network-level RequestError occurs, as for any other upstream failure."""
 
         def handler(req: httpx.Request) -> httpx.Response:
             raise httpx.RequestError('Network error', request=req)
@@ -136,7 +136,7 @@ class TestGCSStreamer:
         gcs_streamer = GCSStreamer(client, mock_download_rate_limiter)
         with pytest.raises(HTTPException) as exc:
             await gcs_streamer.stream_from_gcs('GET', 'https://test.com/bucket/path', {}, {}, bucket_name='bucket')
-        assert exc.value.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+        assert exc.value.status_code == HTTPStatus.BAD_GATEWAY
         await client.aclose()
         mock_download_rate_limiter.refund.assert_called_once()
 

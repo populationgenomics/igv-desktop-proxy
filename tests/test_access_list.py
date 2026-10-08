@@ -10,6 +10,7 @@ from google.api_core.exceptions import PermissionDenied
 from google.auth.exceptions import RefreshError
 
 from server.services.access_list import IgvProxyAccessList, parse_access_map
+from server.utils.constants import ACCESS_LIST_RETRY_BACKOFF_SECS
 
 PROJECT = 'cpg-igv-proxy-test'
 
@@ -206,6 +207,30 @@ class TestIgvProxyAccessList:
         assert all(results)
         eager_load_plus_one_refresh = 2
         assert client.access_secret_version.await_count == eager_load_plus_one_refresh
+
+    @pytest.mark.asyncio
+    async def test_failed_refresh_backs_off_instead_of_retrying_per_request(self):
+        """Test a failed refresh isn't retried by every queued request, only once the backoff lapses."""
+        clock = FakeClock()
+        client = mock_secret_client(
+            secret_payload({'alice@example.com': ['cpg-fewgenomes-main']}),
+            PermissionDenied('transient'),
+            secret_payload({}),
+        )
+        access_list = IgvProxyAccessList(project_id=PROJECT, client=client, ttl_secs=300, clock=clock)
+        await access_list.load()
+        clock.value += 301
+
+        results = await asyncio.gather(
+            *(access_list.is_allowed('alice@example.com', 'cpg-fewgenomes-main') for _ in range(5)),
+        )
+
+        assert all(results)
+        eager_load_plus_one_failed_refresh = 2
+        assert client.access_secret_version.await_count == eager_load_plus_one_failed_refresh
+
+        clock.value += ACCESS_LIST_RETRY_BACKOFF_SECS
+        assert await access_list.is_allowed('alice@example.com', 'cpg-fewgenomes-main') is False
 
     @pytest.mark.asyncio
     async def test_load_retries_before_giving_up(self):

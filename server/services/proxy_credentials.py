@@ -10,10 +10,7 @@ from server.utils.constants import GCS_READ_SCOPE, PROXY_TOKEN_REFRESH_MARGIN_SE
 
 
 class ProxyCredentials:
-    """Mints and caches the access token the proxy uses to read GCS on a user's behalf.
-
-    The narrow scope only binds local ADC/key-file runs; on the metadata server, instance scopes govern.
-    """
+    """Mints and caches the access token the proxy uses to read GCS on a user's behalf."""
 
     def __init__(
         self,
@@ -37,14 +34,12 @@ class ProxyCredentials:
             return token
 
         async with self._refresh_lock:
-            # Tokens expire at a single instant, so every concurrent request notices together.
-            # Whoever holds the lock does the work; the rest find a fresh token waiting.
+            # Another request may have refreshed while this one waited for the lock.
             token = self._fresh_token()
             if token is not None:
                 return token
 
-            # google-auth's transport is synchronous; refreshing on the event loop would stall
-            # every stream this instance is serving.
+            # google-auth's transport is synchronous, so keep it off the event loop
             await anyio.to_thread.run_sync(self._refresh)
 
             self._token = self._credentials.token
