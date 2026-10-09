@@ -230,6 +230,12 @@ cloud_run = gcp.cloudrunv2.Service(
                         name='REDIS_CERT_PATH',
                         value='/etc/secrets/redis/redis_ca.crt',
                     ),
+                    # Project holding igv-proxy-config (SET-1249). Explicit, not inferred:
+                    # on a laptop, ADC resolves to the developer's own project.
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+                        name='IGV_PROXY_CONFIG_PROJECT',
+                        value=_gcp_project,
+                    ),
                 ],
                 ports=gcp.cloudrunv2.ServiceTemplateContainerPortsArgs(
                     name='http1',

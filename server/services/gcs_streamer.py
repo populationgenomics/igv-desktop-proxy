@@ -8,6 +8,15 @@ from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from server.services.rate_limiter import DownloadRateLimiter
+from server.utils.constants import PASS_THROUGH_STATUSES, UPSTREAM_FAILED_DETAIL
+
+
+def map_upstream_error(upstream_status: int) -> tuple[int, str]:
+    """Return the (status, body) this proxy answers with for a given upstream failure."""
+    detail = PASS_THROUGH_STATUSES.get(upstream_status)
+    if detail is not None:
+        return upstream_status, detail
+    return HTTPStatus.BAD_GATEWAY.value, UPSTREAM_FAILED_DETAIL
 
 
 class GCSStreamer:
@@ -62,11 +71,18 @@ class GCSStreamer:
 
             if isinstance(exc, httpx.HTTPStatusError):
                 await exc.response.aread()
-                logging.error(f'HTTP error {exc.response.status_code} while requesting {exc.request.url!r}.')
-                raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text) from exc
+                upstream_status = exc.response.status_code
+                logging.error(
+                    f'HTTP error {upstream_status} while requesting {exc.request.url!r}. '
+                    f'Upstream body: {exc.response.text}',
+                )
+                # Never relay the upstream body: it names the proxy's service account
+                status, detail = map_upstream_error(upstream_status)
+                raise HTTPException(status_code=status, detail=detail) from exc
             if isinstance(exc, httpx.RequestError):
                 logging.error(f'An error occurred while requesting {exc.request.url!r}. {exc}')
-                raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR) from exc
+                # GCS unreachable or timed out: an upstream failure, so the same alertable 502
+                raise HTTPException(status_code=HTTPStatus.BAD_GATEWAY, detail=UPSTREAM_FAILED_DETAIL) from exc
 
             logging.error(f'Unexpected error: {exc}')
             raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR) from exc

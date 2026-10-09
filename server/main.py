@@ -7,16 +7,33 @@ import redis.asyncio as redis
 import uvicorn
 from fastapi import Depends, FastAPI, Request, Response
 
+from server.services.access_list import IgvProxyAccessList
 from server.services.gcs_streamer import GCSStreamer
+from server.services.proxy_credentials import ProxyCredentials
 from server.services.rate_limit_store import RateLimitRedisClient
-from server.utils.connections import create_redis_pool, get_httpx_client, get_redis_client
+from server.services.rate_limiter import DownloadRateLimiter
+from server.services.user_identity import UserIdentityResolver
+from server.utils.connections import (
+    create_redis_pool,
+    get_access_list,
+    get_httpx_client,
+    get_proxy_credentials,
+    get_redis_client,
+    read_config_project_id,
+)
 from server.utils.constants import (
     FASTAPI_DEFAULT_CONFIGS,
     GCS_BASE_URL,
     HTTPX_CLIENT_TIMEOUT,
 )
-from server.utils.helpers import get_headers
-from server.utils.validation import rate_limit_if_applicable, validate_and_parse_path, validate_auth
+from server.utils.helpers import build_gcs_headers, get_headers
+from server.utils.validation import (
+    apply_rate_limit,
+    authorize_bucket_access,
+    resolve_request_bytes,
+    validate_and_parse_path,
+    validate_auth,
+)
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -29,7 +46,13 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Define application lifespan."""
+    """Define application lifespan. Config or access map failures propagate, failing the deploy."""
+    config_project_id = read_config_project_id()
+    _app.state.proxy_credentials = ProxyCredentials()
+
+    _app.state.access_list = IgvProxyAccessList(project_id=config_project_id)
+    await _app.state.access_list.load()
+
     _app.state.httpx_client = httpx.AsyncClient(timeout=HTTPX_CLIENT_TIMEOUT)
     _app.state.redis_client = RateLimitRedisClient(
         redis.Redis.from_pool(create_redis_pool()),
@@ -37,6 +60,7 @@ async def lifespan(_app: FastAPI):
     yield
     await _app.state.httpx_client.aclose()
     await _app.state.redis_client.aclose()
+    await _app.state.access_list.aclose()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -48,17 +72,43 @@ async def health_check(_request: Request):
     return Response(status_code=HTTPStatus.OK, content='OK. Server is healthy.')
 
 
+class ProxyClients:
+    """The shared clients every proxied request needs, injected by FastAPI."""
+
+    def __init__(
+        self,
+        httpx_client: httpx.AsyncClient = Depends(get_httpx_client),
+        redis_client: RateLimitRedisClient = Depends(get_redis_client),
+        access_list: IgvProxyAccessList = Depends(get_access_list),
+        proxy_credentials: ProxyCredentials = Depends(get_proxy_credentials),
+    ) -> None:
+        """Hold the injected clients."""
+        self.httpx_client = httpx_client
+        self.redis_client = redis_client
+        self.access_list = access_list
+        self.proxy_credentials = proxy_credentials
+
+    async def authorize(self, user_token: str, bucket: str, headers: dict) -> tuple[str, dict[str, str]]:
+        """Refuse the caller unless they may read this bucket; return their email and the GCS headers."""
+        email = await UserIdentityResolver(
+            redis_client=self.redis_client,
+            http_client=self.httpx_client,
+            user_token=user_token,
+        ).resolve()
+        await authorize_bucket_access(self.access_list, email, bucket)
+
+        gcs_headers = build_gcs_headers(headers, await self.proxy_credentials.get_token())
+        return email, gcs_headers
+
+
 @app.api_route('/{full_path:path}', methods=['HEAD'])
-async def proxy_handler_metadata(
-    request: Request,
-    full_path: str,
-    httpx_client: httpx.AsyncClient = Depends(get_httpx_client),
-):
-    """Proxy requests to GCS. Rate limit logics are bypassed. Directly forward these requests to GCS."""
+async def proxy_handler_metadata(request: Request, full_path: str, clients: ProxyClients = Depends()):
+    """Proxy metadata requests to GCS. Unmetered, but still authorized so a HEAD can't probe objects."""
     bucket, object_path = validate_and_parse_path(full_path)
     headers = get_headers(request.headers)
 
-    validate_auth(headers)
+    user_token = validate_auth(headers)
+    _, gcs_headers = await clients.authorize(user_token, bucket, headers)
 
     target_url = httpx.URL(
         scheme='https',
@@ -66,37 +116,36 @@ async def proxy_handler_metadata(
         path=f'/{object_path}',
     )
 
-    streamer = GCSStreamer(httpx_client=httpx_client, rate_limiter=None)
+    streamer = GCSStreamer(httpx_client=clients.httpx_client, rate_limiter=None)
     return await streamer.stream_from_gcs(
         method=request.method,
         target_url=target_url,
-        headers=headers,
+        headers=gcs_headers,
         query_params=request.query_params,
         bucket_name=bucket,
     )
 
 
 @app.api_route('/{full_path:path}', methods=['GET'])
-async def proxy_handler(
-    request: Request,
-    full_path: str,
-    httpx_client: httpx.AsyncClient = Depends(get_httpx_client),
-    redis_client: RateLimitRedisClient = Depends(get_redis_client),
-):
-    """Proxy requests to GCS."""
+async def proxy_handler(request: Request, full_path: str, clients: ProxyClients = Depends()):
+    """Proxy requests to GCS. Authorize before metering, so a refused request costs no budget."""
     bucket, object_path = validate_and_parse_path(full_path)
     headers = get_headers(request.headers)
 
     user_token = validate_auth(headers)
     range_header = headers.get('Range')
 
-    rate_limiter = await rate_limit_if_applicable(
-        object_path=object_path,
-        range_header=range_header,
-        user_token=user_token,
-        httpx_client=httpx_client,
-        redis_client=redis_client,
+    request_bytes = resolve_request_bytes(object_path, range_header)
+
+    # Fetches the GCS token before metering: a raise after the deduction would cost the caller budget
+    email, gcs_headers = await clients.authorize(user_token, bucket, headers)
+
+    rate_limiter = DownloadRateLimiter(
+        redis_client=clients.redis_client,
+        user_email=email,
+        request_bytes=request_bytes if request_bytes is not None else 0,
     )
+    is_metered = await apply_rate_limit(rate_limiter, request_bytes)
 
     target_url = httpx.URL(
         scheme='https',
@@ -104,11 +153,11 @@ async def proxy_handler(
         path=f'/{object_path}',
     )
 
-    streamer = GCSStreamer(httpx_client=httpx_client, rate_limiter=rate_limiter)
+    streamer = GCSStreamer(httpx_client=clients.httpx_client, rate_limiter=rate_limiter if is_metered else None)
     return await streamer.stream_from_gcs(
         method=request.method,
         target_url=target_url,
-        headers=headers,
+        headers=gcs_headers,
         query_params=request.query_params,
         bucket_name=bucket,
     )
