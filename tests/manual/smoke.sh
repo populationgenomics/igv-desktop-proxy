@@ -31,8 +31,8 @@ check() {  # <description> <expected> <actual>
     fi
 }
 
-budget() { local v; v=$(rc HGET "sub:$SUB" remaining_bytes); echo "${v:-$CAP}"; }
-stats() { local v; v=$(rc GET "dl_stats:$SUB:$BUCKET:$(date -u +%F)"); echo "${v:-0}"; }
+budget() { local v; v=$(rc HGET "budget:$EMAIL" remaining_bytes); echo "${v:-$CAP}"; }
+stats() { local v; v=$(rc GET "dl_stats:$EMAIL:$BUCKET:$(date -u +%F)"); echo "${v:-0}"; }
 
 echo 'Authentication'
 check 'health check' 200 "$(status "$PROXY_URL/health")"
@@ -42,8 +42,8 @@ check 'invalid token -> 401' 401 "$(status -I -H 'Authorization: Bearer not-a-re
 echo 'Main path'
 check 'HEAD -> 200' 200 "$(status -I -H "$AUTH" "$PROXY_URL/$BUCKET/$CRAM")"
 
-SUB=$(rc GET "$TOKEN_KEY" | jq -r '.sub // empty' 2>/dev/null)
-if [[ -z "$SUB" ]]; then
+EMAIL=$(rc GET "$TOKEN_KEY")
+if [[ -z "$EMAIL" ]]; then
     echo "  FAIL  no identity cached under $TOKEN_KEY; the remaining checks need it"
     exit 1
 fi

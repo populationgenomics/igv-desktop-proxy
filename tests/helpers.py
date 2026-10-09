@@ -27,7 +27,6 @@ def streaming_response(status: HTTPStatus, data: bytes = b'', **kwargs: object) 
 def userinfo_response(**overrides: object) -> dict:
     """Return a valid userinfo payload."""
     payload: dict[str, object] = {
-        'sub': 'user123',
         'email': 'alice@example.com',
         'email_verified': True,
     }

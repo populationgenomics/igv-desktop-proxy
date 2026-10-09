@@ -13,7 +13,7 @@ class TestDownloadRateLimiter:
         """Set up the download rate limiter class."""
         self.rate_limiter = DownloadRateLimiter(
             redis_client=mock_redis_client,
-            user_sub='user123',
+            user_email='alice@example.com',
             request_bytes=512_000,
         )
         self.redis_client = mock_redis_client
@@ -39,7 +39,7 @@ class TestDownloadRateLimiter:
         await self.rate_limiter.record_download_stats('test-bucket')
         self.redis_client.increment_download_stats.assert_called_once()
         call_args = self.redis_client.increment_download_stats.call_args
-        assert call_args.kwargs['stats_key'].startswith('dl_stats:user123:test-bucket:')
+        assert call_args.kwargs['stats_key'].startswith('dl_stats:alice@example.com:test-bucket:')
 
     @pytest.mark.asyncio
     async def test_refund_calls_redis(self):

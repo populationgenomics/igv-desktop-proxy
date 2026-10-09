@@ -19,9 +19,9 @@ CAPPED_TIME_WINDOW_SECS = 3600  # 1-hour
 LOCK_POLL_ATTEMPTS = 10
 LOCK_POLL_SLEEP_S = 0.1
 
-SUB_PREFIX = 'sub'
+BUDGET_PREFIX = 'budget'
 LOCK_PREFIX = 'lock'
-# v2 caches JSON {sub, email}; a new prefix keeps it apart from the old bare-`sub` entries
+# v2 caches the verified email; a new prefix keeps it apart from v1 entries, which cached a different ID
 TOKEN_HASH_PREFIX = 'token_hash_v2'  # noqa: S105
 
 # identity verification

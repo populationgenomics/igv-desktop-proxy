@@ -88,17 +88,17 @@ class ProxyClients:
         self.access_list = access_list
         self.proxy_credentials = proxy_credentials
 
-    async def authorize(self, user_token: str, bucket: str, headers: dict) -> tuple[dict[str, str], dict[str, str]]:
-        """Refuse the caller unless they may read this bucket; return their identity and the GCS headers."""
-        identity = await UserIdentityResolver(
+    async def authorize(self, user_token: str, bucket: str, headers: dict) -> tuple[str, dict[str, str]]:
+        """Refuse the caller unless they may read this bucket; return their email and the GCS headers."""
+        email = await UserIdentityResolver(
             redis_client=self.redis_client,
             http_client=self.httpx_client,
             user_token=user_token,
         ).resolve()
-        await authorize_bucket_access(self.access_list, identity['email'], bucket)
+        await authorize_bucket_access(self.access_list, email, bucket)
 
         gcs_headers = build_gcs_headers(headers, await self.proxy_credentials.get_token())
-        return identity, gcs_headers
+        return email, gcs_headers
 
 
 @app.api_route('/{full_path:path}', methods=['HEAD'])
@@ -138,11 +138,11 @@ async def proxy_handler(request: Request, full_path: str, clients: ProxyClients 
     request_bytes = resolve_request_bytes(object_path, range_header)
 
     # Fetches the GCS token before metering: a raise after the deduction would cost the caller budget
-    identity, gcs_headers = await clients.authorize(user_token, bucket, headers)
+    email, gcs_headers = await clients.authorize(user_token, bucket, headers)
 
     rate_limiter = DownloadRateLimiter(
         redis_client=clients.redis_client,
-        user_sub=identity['sub'],
+        user_email=email,
         request_bytes=request_bytes if request_bytes is not None else 0,
     )
     is_metered = await apply_rate_limit(rate_limiter, request_bytes)

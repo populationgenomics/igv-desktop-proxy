@@ -130,7 +130,7 @@ class TestMainAPI:
         assert self.transport.gcs_requests == []
 
     def test_token_without_an_email_claim_is_refused(self):
-        """Test a token carrying a sub but no email cannot be authorized against an email-keyed map."""
+        """Test a token carrying no email cannot be authorized against an email-keyed map."""
         del self.transport.userinfo['email']
 
         response = self.proxy_api.get(INDEX_PATH, headers=CALLER_HEADERS)
