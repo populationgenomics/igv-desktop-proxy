@@ -1,6 +1,6 @@
 -- Refunds bytes to download budget after a failed GCS request,
 -- if the time window is still active.
--- Keys:   KEYS[1] = user_sub (user hash key)
+-- Keys:   KEYS[1] = budget_key (user hash key)
 -- Args:   ARGV[1] = amount   (bytes to refund)
 --         ARGV[2] = now      (current unix timestamp)
 

@@ -27,7 +27,7 @@ class RateLimitRedisClient:
             (resources_path / 'increment_stats.lua').read_text(),
         )
 
-    async def deduct_if_balance(self, user_sub: str, request_bytes: int, now: float) -> int:
+    async def deduct_if_balance(self, budget_key: str, request_bytes: int, now: float) -> int:
         """Deduct request_range bytes from users download budget if sufficient download quota is available.
 
         Returns -> the remaining bytes if sufficient quota is available, -1 otherwise.
@@ -36,14 +36,14 @@ class RateLimitRedisClient:
             return -1
 
         return await self._check_available_limit(
-            keys=[user_sub],
+            keys=[budget_key],
             args=[request_bytes, DOWNLOAD_CAP_BYTES, CAPPED_TIME_WINDOW_SECS, now],
         )
 
-    async def refund(self, user_sub: str, amount: int, now: float) -> int:
-        """Refund amount bytes to user_sub's budget (if window still active)."""
+    async def refund(self, budget_key: str, amount: int, now: float) -> int:
+        """Refund amount bytes to budget_key's budget (if window still active)."""
         return await self._refund_on_fail(
-            keys=[user_sub],
+            keys=[budget_key],
             args=[amount, now],
         )
 
