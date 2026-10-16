@@ -32,7 +32,6 @@ def verify_user_info(user_info: dict) -> str:
         )
         raise HTTPException(HTTPStatus.UNAUTHORIZED)
 
-    # userinfo sends a boolean, tokeninfo the string 'true'; accept either so the endpoint can be swapped
     email_verified = user_info.get('email_verified')
     if email_verified is not True and email_verified != 'true':
         logging.error(f'Refusing an unverified email address. email_verified={email_verified!r}')
@@ -62,7 +61,7 @@ class UserIdentityResolver:
         try:
             email = await self.get_authenticated_email(token_hash)
         except tenacity.RetryError as err:
-            logging.error(f'Failed to get token info after retrying. {err}')
+            logging.error(f'Failed to get user info after retrying. {err}')
             email = None
 
         if email is None:

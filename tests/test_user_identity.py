@@ -143,7 +143,7 @@ class TestUserIdentityResolver:
 
     @pytest.mark.asyncio
     async def test_fetch_user_info_calls_the_userinfo_endpoint(self):
-        """Test the proxy asks userinfo, not tokeninfo, which Google says isn't for production use."""
+        """Test the proxy asks Google's userinfo endpoint."""
         mock_response = httpx.Response(HTTPStatus.OK, json=userinfo_response())
 
         with patch.object(self.resolver.http_client, 'get', return_value=mock_response) as mock_get:
@@ -182,7 +182,7 @@ class TestUserIdentityResolver:
 
     @pytest.mark.parametrize('verified', [True, 'true'])
     def test_verify_accepts_a_verified_email(self, verified: object):
-        """Test both userinfo's boolean and tokeninfo's string form of a verified email are trusted."""
+        """Test both the boolean and string form of a verified email are trusted."""
         assert verify_user_info(userinfo_response(email_verified=verified)) == 'alice@example.com'
 
     @pytest.mark.parametrize('verified', [False, 'false', 'True', 1, '', None])
