@@ -1,7 +1,7 @@
 --  Adapted from - https://github.com/alisaifee/limits,
 --  https://redis.io/tutorials/howtos/ratelimiting/#1-fixed-window-counter
 
---  Keys:   KEYS[1] = user_sub       (user sub key)
+--  Keys:   KEYS[1] = budget_key     (user budget key)
 --  Args:   ARGV[1] = request_bytes  (bytes being requested)
 --          ARGV[2] = cap            (total bytes allowed per window)
 --          ARGV[3] = window         (window duration in seconds)
