@@ -1,14 +1,17 @@
 [project]
 name = "igv-desktop-proxy"
-version = "0.1.0"
+version = "1.1.0"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.20.0",
     "httpx>=0.25.0",
     "redis==7.3.0", # Keeping sync with GCP redis version
-    "tenacity>=9.1.4"
+    "tenacity>=9.1.4",
+    "google-cloud-secret-manager>=2.20.0",
+    "google-auth[requests]>=2.30.0",  # the [requests] extra backs google.auth.transport.requests
+    "anyio>=4.0.0",
 ]
 
 [dependency-groups]

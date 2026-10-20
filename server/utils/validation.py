@@ -1,12 +1,14 @@
+import logging
 from http import HTTPStatus
 
-import httpx
 from fastapi import HTTPException
 
-from server.services.rate_limit_store import RateLimitRedisClient
+from server.services.access_list import IgvProxyAccessList
 from server.services.rate_limiter import DownloadRateLimiter
 from server.utils.constants import (
     AUTH_HEADER_PARTS,
+    FORBIDDEN_DETAIL,
+    INDEX_FILE_SUFFIXES,
     REQUEST_URL_PARTS,
 )
 from server.utils.helpers import get_byte_range
@@ -40,14 +42,17 @@ def validate_auth(headers: dict) -> str:
     return user_token[1].strip()
 
 
-async def rate_limit_if_applicable(
-    object_path: str,
-    range_header: str | None,
-    user_token: str,
-    httpx_client: httpx.AsyncClient,
-    redis_client: RateLimitRedisClient,
-) -> DownloadRateLimiter | None:
-    """Check whether this request should be rate-limited.
+async def authorize_bucket_access(access_list: IgvProxyAccessList, email: str, bucket: str) -> None:
+    """Raise 403 unless this user is listed against this bucket (503 if no map has ever loaded)."""
+    if await access_list.is_allowed(email, bucket):
+        return
+
+    logging.info(f'Refused {email} access to {bucket}: not in the IGV proxy access map.')
+    raise HTTPException(HTTPStatus.FORBIDDEN, detail=FORBIDDEN_DETAIL)
+
+
+def resolve_request_bytes(object_path: str, range_header: str | None) -> int | None:
+    """Return how many bytes this request reserves, or None if it is not metered.
 
     For CRAM files:
         the initial requests usually fetch content from the CRAM index file.
@@ -67,26 +72,24 @@ async def rate_limit_if_applicable(
         Requests for a specific region in the BigWig file includes a range request
         (varied ranges-does not stick to 512 KB).
     """
-    if range_header is None:  # range header specified for non-index files
-        is_index_file = object_path.endswith(('.crai', '.bai', '.csi', '.tbi'))
+    request_bytes = None if range_header is None else get_byte_range(range_header)
+    if request_bytes is not None:
+        return request_bytes
 
-        if is_index_file:
-            return None
+    # Index files are served whole and unmetered; anything else without an exact byte count can't be rate-limited
+    if object_path.endswith(INDEX_FILE_SUFFIXES):
+        return None
 
-        # Reject the request if range is not specified as we can not rate-limit them otherwise
-        raise HTTPException(HTTPStatus.BAD_REQUEST)
+    raise HTTPException(HTTPStatus.BAD_REQUEST, detail='A single closed byte range (bytes=START-END) is required.')
 
-    request_bytes = get_byte_range(range_header)
 
-    rate_limiter = DownloadRateLimiter(
-        redis_client=redis_client,
-        http_client=httpx_client,
-        user_token=user_token,
-        request_bytes=request_bytes,
-    )
+async def apply_rate_limit(rate_limiter: DownloadRateLimiter, request_bytes: int | None) -> bool:
+    """Charge a metered request against the user's budget, raising 429 if exhausted. Return whether it was metered."""
+    if request_bytes is None:
+        return False
 
-    is_allowed = await rate_limiter.check_user_limit()
+    is_allowed = await rate_limiter.evaluate_download_limits()
     if not is_allowed:
         raise HTTPException(HTTPStatus.TOO_MANY_REQUESTS)
 
-    return rate_limiter
+    return True
